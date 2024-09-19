@@ -4,8 +4,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from api.views import (
-    RegisterUserView, CoffeeShopViewSet, CoffeeShopApplicationViewSet, 
-    MenuCategoryViewSet, MenuItemViewSet, PromoViewSet, RatingViewSet, 
+    RegisterUserView, CoffeeShopViewSet, CoffeeShopApplicationViewSet,
+    MenuCategoryViewSet, MenuItemViewSet, PromoViewSet, RatingViewSet,
     BugReportViewSet, MyTokenObtainPairView, OwnerTokenObtainPairView,
     custom_login, UserProfileViewSet, UserProfileView
 )
@@ -33,15 +33,17 @@ urlpatterns = [
     # Updated URL patterns for coffee shop-specific data
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/', MenuCategoryViewSet.as_view({'get': 'list', 'post': 'create'}), name='menu-category-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/<int:pk>/', MenuCategoryViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='menu-category-detail'),
-    
+
     path('api/coffee-shops/<int:coffee_shop_id>/menu-items/', MenuItemViewSet.as_view({'get': 'list', 'post': 'create'}), name='menu-item-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/menu-items/<int:pk>/', MenuItemViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='menu-item-detail'),
-    
+
     path('api/coffee-shops/<int:coffee_shop_id>/promos/', PromoViewSet.as_view({'get': 'list', 'post': 'create'}), name='promo-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/promos/<int:pk>/', PromoViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='promo-detail'),
-    
+
     path('api/coffee-shops/<int:coffee_shop_id>/ratings/', RatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='rating-list'),
-    
+
     # New URL patterns for managing favorite coffee shops
     path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
