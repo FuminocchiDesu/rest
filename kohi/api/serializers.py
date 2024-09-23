@@ -7,7 +7,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 import logging
 import traceback
-from django.db import transaction, IntegrityError
+from django.db import IntegrityError
 
 class SimpleCoffeeShopSerializer(serializers.ModelSerializer):
     class Meta:
@@ -33,7 +33,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_profile_picture_url(self, obj):
         if obj.profile_picture:
-            return self.context['request'].build_absolute_uri(obj.profile_picture.url)
+            request = self.context.get('request')
+            if request is not None:
+                return request.build_absolute_uri(obj.profile_picture.url)
+            return obj.profile_picture.url
         return None
 
 
@@ -48,11 +51,21 @@ class UserSerializer(serializers.ModelSerializer):
             'password': {'write_only': True}
         }
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        profile = UserProfile.objects.filter(user=instance).first()
+        if profile:
+            ret['profile'] = UserProfileSerializer(profile, context=self.context).data
+        return ret
+
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value
-
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
     def validate_password(self, value):
         try:
             validate_password(value)
@@ -63,6 +76,7 @@ class UserSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         profile_data = validated_data.pop('profile', {})
+        logger.info(f"Validated data: {validated_data}")
         try:
             user = User.objects.create_user(
                 username=validated_data['username'],
@@ -78,12 +92,10 @@ class UserSerializer(serializers.ModelSerializer):
         except Exception as e:
             logger.error(f"Error creating user or profile: {str(e)}")
             logger.error(traceback.format_exc())
-            if 'user' in locals():
-                user.delete()  # Rollback user creation if profile creation fails
             raise serializers.ValidationError(f"An error occurred during user creation: {str(e)}")
 
         return user
-    
+
 class CoffeeShopSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     average_rating = serializers.FloatField(read_only=True)

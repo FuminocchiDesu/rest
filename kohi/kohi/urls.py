@@ -7,7 +7,7 @@ from api.views import (
     RegisterUserView, CoffeeShopViewSet, CoffeeShopApplicationViewSet,
     MenuCategoryViewSet, MenuItemViewSet, PromoViewSet, RatingViewSet,
     BugReportViewSet, MyTokenObtainPairView, OwnerTokenObtainPairView,
-    custom_login, UserProfileViewSet, UserProfileView
+    custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -44,6 +44,8 @@ urlpatterns = [
 
     # New URL patterns for managing favorite coffee shops
     path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
+
+    path('api/coffeeshops/<int:pk>/', CoffeeShopDetailView.as_view(), name='coffee-shop-detail'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

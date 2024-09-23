@@ -9,7 +9,7 @@ from django.contrib.auth import authenticate
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import status
+#from rest_framework import status
 from .models import CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating, BugReport, UserProfile
 from .serializers import (
     CoffeeShopSerializer, CoffeeShopApplicationSerializer, MenuCategorySerializer,
@@ -56,7 +56,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             return Response({'status': 'coffee shop removed from favorites'})
         except CoffeeShop.DoesNotExist:
             return Response({'error': 'coffee shop not found'}, status=status.HTTP_404_NOT_FOUND)
-        
+
 @api_view(['POST'])
 def custom_login(request):
     username = request.data.get('username')
@@ -89,7 +89,7 @@ class UserProfileView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 class OwnerTokenObtainPairView(TokenObtainPairView):
     permission_classes = [AllowAny]
 
@@ -98,14 +98,14 @@ class OwnerTokenObtainPairView(TokenObtainPairView):
         user = User.objects.get(username=request.data['username'])
         if not user.is_staff:
             return Response({"detail": "Not authorized"}, status=403)
-        
+
         # Get the owner's coffee shop
         coffee_shop = CoffeeShop.objects.filter(owner=user).first()
         if coffee_shop:
             response.data['coffee_shop_id'] = coffee_shop.id
-        
+
         return response
-    
+
 class MyTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -137,19 +137,20 @@ def create(self, validated_data):
 
 logger = logging.getLogger(__name__)
 
+
 class RegisterUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             try:
                 user = serializer.save()
                 refresh = RefreshToken.for_user(user)
                 response_data = {
-                    'user': UserSerializer(user).data,
+                    'user': UserSerializer(user, context={'request': request}).data,
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
                 }
@@ -160,7 +161,7 @@ class RegisterUserView(generics.CreateAPIView):
                 return Response({'error': f'An unexpected error occurred during registration: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    
+
 class CoffeeShopViewSet(viewsets.ModelViewSet):
     queryset = CoffeeShop.objects.all()
     serializer_class = CoffeeShopSerializer
@@ -211,7 +212,7 @@ class MenuItemViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
         category_id = request.data.get('category')
-        
+
         try:
             category = MenuCategory.objects.get(id=category_id, coffee_shop_id=coffee_shop_id)
         except MenuCategory.DoesNotExist:
@@ -220,9 +221,9 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(category=category)
-        
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+
 class MenuCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = MenuCategorySerializer
     permission_classes = [IsAuthenticated]
@@ -233,7 +234,7 @@ class MenuCategoryViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        
+
         try:
             coffee_shop = CoffeeShop.objects.get(id=coffee_shop_id)
         except CoffeeShop.DoesNotExist:
@@ -242,7 +243,7 @@ class MenuCategoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(coffee_shop=coffee_shop)
-        
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class PromoViewSet(viewsets.ModelViewSet):
@@ -256,7 +257,7 @@ class PromoViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        
+
         try:
             coffee_shop = CoffeeShop.objects.get(id=coffee_shop_id)
         except CoffeeShop.DoesNotExist:
@@ -265,7 +266,7 @@ class PromoViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(coffee_shop=coffee_shop)
-        
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class RatingViewSet(viewsets.ModelViewSet):
@@ -294,3 +295,23 @@ class BugReportViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(reports, many=True)
         return Response(serializer.data)
 
+class CoffeeShopDetailView(generics.RetrieveAPIView):
+    queryset = CoffeeShop.objects.all()
+    serializer_class = CoffeeShopSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        coffee_shop = self.get_object()
+        serializer = self.get_serializer(coffee_shop)
+
+        # Fetch related data
+        menu_categories = MenuCategory.objects.filter(coffee_shop=coffee_shop).prefetch_related('items')
+        promos = Promo.objects.filter(coffee_shop=coffee_shop)
+        ratings = Rating.objects.filter(coffee_shop=coffee_shop)
+
+        return Response({
+            'coffee_shop': serializer.data,
+            'menu_categories': MenuCategorySerializer(menu_categories, many=True).data,
+            'promos': PromoSerializer(promos, many=True).data,
+            'ratings': RatingSerializer(ratings, many=True).data,
+        })
