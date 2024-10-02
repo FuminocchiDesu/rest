@@ -7,7 +7,7 @@ from api.views import (
     RegisterUserView, CoffeeShopViewSet, CoffeeShopApplicationViewSet,
     MenuCategoryViewSet, MenuItemViewSet, PromoViewSet, RatingViewSet,
     BugReportViewSet, MyTokenObtainPairView, OwnerTokenObtainPairView,
-    custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView
+    custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView, OpeningHourViewSet, PasswordResetView, ChangePasswordView,CoffeeShopDetailViewSet
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -18,7 +18,7 @@ router.register(r'coffee-shops', CoffeeShopViewSet)
 router.register(r'applications', CoffeeShopApplicationViewSet)
 router.register(r'bug-reports', BugReportViewSet)
 router.register(r'users', UserProfileViewSet)
-
+router.register(r'opening-hours', OpeningHourViewSet, basename='opening-hour')
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
@@ -29,7 +29,10 @@ urlpatterns = [
     path('api/owner/', OwnerTokenObtainPairView.as_view(), name='token_obtain_owner'),
     path('api/owner/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/profile/', UserProfileView.as_view(), name='user-profile'),
-
+    path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
+    path('api/reset-password/', PasswordResetView.as_view(), name='reset-password'),
+    path('api/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('api/coffeeshoplist/', CoffeeShopDetailViewSet.as_view({'get': 'list'})),
     # Updated URL patterns for coffee shop-specific data
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/', MenuCategoryViewSet.as_view({'get': 'list', 'post': 'create'}), name='menu-category-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/<int:pk>/', MenuCategoryViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='menu-category-detail'),
@@ -40,12 +43,14 @@ urlpatterns = [
     path('api/coffee-shops/<int:coffee_shop_id>/promos/', PromoViewSet.as_view({'get': 'list', 'post': 'create'}), name='promo-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/promos/<int:pk>/', PromoViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='promo-detail'),
 
-    path('api/coffee-shops/<int:coffee_shop_id>/ratings/', RatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='rating-list'),
-
     # New URL patterns for managing favorite coffee shops
     path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
 
     path('api/coffeeshops/<int:pk>/', CoffeeShopDetailView.as_view(), name='coffee-shop-detail'),
+    path('api/coffee-shops/<int:coffee_shop_id>/ratings/', RatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='rating-list'),
+     # Rating-related URLs
+    path('api/coffee-shops/<int:coffee_shop_id>/ratings/', RatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='rating-list'),
+    path('api/coffee-shops/<int:coffee_shop_id>/ratings/user-rating/', RatingViewSet.as_view({'get': 'user_rating'}), name='user-rating'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

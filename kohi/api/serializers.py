@@ -1,6 +1,6 @@
 #backend/api/serializers.py
 from rest_framework import serializers
-from .models import CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating, BugReport, UserProfile
+from .models import CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating, BugReport, UserProfile, MenuItemSize, OpeningHour
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.contrib.auth.password_validation import validate_password
@@ -9,21 +9,37 @@ import logging
 import traceback
 from django.db import IntegrityError
 
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+    confirm_new_password = serializers.CharField(required=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_new_password']:
+            raise serializers.ValidationError("New passwords do not match.")
+        return data
+
 class SimpleCoffeeShopSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False)
+
     class Meta:
         model = CoffeeShop
-        fields = ['id', 'name', 'address']
-
+        fields = ['id', 'name', 'address', 'image', 'average_rating']
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
 logger = logging.getLogger(__name__)
 
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
     profile_picture_url = serializers.SerializerMethodField()
-
+    favorite_coffee_shops = SimpleCoffeeShopSerializer(many=True, read_only=True)
     class Meta:
         model = UserProfile
-        fields = ['username', 'email', 'bio', 'contact_number', 'full_name', 'profile_picture', 'profile_picture_url']
+        fields = ['username', 'email', 'bio', 'contact_number', 'full_name', 'profile_picture', 'profile_picture_url', 'favorite_coffee_shops']
         extra_kwargs = {
             'bio': {'required': False, 'default': ''},
             'contact_number': {'required': False, 'default': ''},
@@ -96,14 +112,80 @@ class UserSerializer(serializers.ModelSerializer):
 
         return user
 
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        # Update user fields
+        instance.username = validated_data.get('username', instance.username)
+        instance.email = validated_data.get('email', instance.email)
+
+        # Handle password update if provided
+        password = validated_data.get('password')
+        if password:
+            instance.set_password(password)
+
+        instance.save()
+
+        # Update or create profile
+        profile_data = validated_data.get('profile')
+        if profile_data:
+            profile, created = UserProfile.objects.get_or_create(user=instance)
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+            profile.save()
+
+        return instance
+
+class PasswordResetSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Old password is not correct")
+        return value
+
+    def validate_new_password(self, value):
+        try:
+            validate_password(value, self.context['request'].user)
+        except ValidationError as e:
+            raise serializers.ValidationError(str(e))
+        return value
+
+    @transaction.atomic
+    def save(self):
+        user = self.context['request'].user
+        new_password = self.validated_data['new_password']
+        user.set_password(new_password)
+        user.save()
+        return user
+
+
+class OpeningHourSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OpeningHour
+        fields = ['day', 'opening_time', 'closing_time']
+
 class CoffeeShopSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     average_rating = serializers.FloatField(read_only=True)
     image = serializers.ImageField(required=False)
-
     class Meta:
         model = CoffeeShop
-        fields = '__all__'
+        fields = [
+            'id',
+            'name',
+            'address',
+            'description',
+            'opening_hours',
+            'image',
+            'latitude',
+            'longitude',
+            'average_rating',
+            'owner'  # Include the owner field here
+        ]
+
+
 
 class CoffeeShopApplicationSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -113,26 +195,70 @@ class CoffeeShopApplicationSerializer(serializers.ModelSerializer):
         model = CoffeeShopApplication
         fields = '__all__'
 
+class MenuItemSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MenuItemSize
+        fields = ['size', 'price']
+    def get_price(self, obj):
+        return f"₱{obj.price}"
+
 class MenuItemSerializer(serializers.ModelSerializer):
-    category = serializers.PrimaryKeyRelatedField(queryset=MenuCategory.objects.all())
-    image = serializers.ImageField(required=False)
+    sizes = MenuItemSizeSerializer(many=True)
 
     class Meta:
         model = MenuItem
-        fields = ['id', 'name', 'description', 'price', 'category', 'image']
+        fields = ['id', 'category', 'name', 'description', 'image', 'sizes']
+    def get_price(self, obj):
+        return f"₱{obj.price}"
+    def create(self, validated_data):
+        sizes_data = validated_data.pop('sizes')
+        menu_item = MenuItem.objects.create(**validated_data)
+        for size_data in sizes_data:
+            MenuItemSize.objects.create(menu_item=menu_item, **size_data)
+        return menu_item
 
+    def update(self, instance, validated_data):
+        sizes_data = validated_data.pop('sizes', None)
+        instance = super().update(instance, validated_data)
+
+        if sizes_data is not None:
+            # Clear existing sizes
+            instance.sizes.all().delete()
+            for size_data in sizes_data:
+                MenuItemSize.objects.create(menu_item=instance, **size_data)
+
+        return instance
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
     def validate_category(self, value):
         coffee_shop_id = self.context['view'].kwargs.get('coffee_shop_id')
         if value.coffee_shop_id != int(coffee_shop_id):
             raise serializers.ValidationError("Invalid category for this coffee shop")
         return value
 
-class MenuCategorySerializer(serializers.ModelSerializer):
+"""class MenuCategorySerializer(serializers.ModelSerializer):
     coffee_shop = serializers.PrimaryKeyRelatedField(queryset=CoffeeShop.objects.all(), write_only=True)
 
     class Meta:
         model = MenuCategory
         fields = ['id', 'name', 'coffee_shop']
+
+    def validate_coffee_shop(self, value):
+        coffee_shop_id = self.context['view'].kwargs.get('coffee_shop_id')
+        if value.id != int(coffee_shop_id):
+            raise serializers.ValidationError("Invalid coffee shop")
+        return value"""
+
+class MenuCategorySerializer(serializers.ModelSerializer):
+    coffee_shop = serializers.PrimaryKeyRelatedField(queryset=CoffeeShop.objects.all(), write_only=True)
+    items = MenuItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = MenuCategory
+        fields = ['id', 'name', 'coffee_shop', 'items']
 
     def validate_coffee_shop(self, value):
         coffee_shop_id = self.context['view'].kwargs.get('coffee_shop_id')
@@ -147,12 +273,18 @@ class PromoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Promo
         fields = ['id', 'name', 'description', 'start_date', 'end_date', 'coffee_shop', 'image']
-
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            return request.build_absolute_uri(obj.image.url)
+        return None
     def validate_coffee_shop(self, value):
         coffee_shop_id = self.context['view'].kwargs.get('coffee_shop_id')
         if value.id != int(coffee_shop_id):
             raise serializers.ValidationError("Invalid coffee shop")
         return value
+    def get_price(self, obj):
+        return f"₱{obj.price}"
 
 class RatingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -160,6 +292,8 @@ class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = '__all__'
+    def create(self, validated_data):
+       return Rating.objects.create(**validated_data)
 
 class BugReportSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
