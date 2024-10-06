@@ -7,14 +7,16 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 #from rest_framework import status
-from .models import CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating, BugReport, UserProfile, MenuItemSize, OpeningHour
+from .models import (CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating,
+                    BugReport, UserProfile, MenuItemSize, OpeningHour, Visit)
 from .serializers import (
     CoffeeShopSerializer, CoffeeShopApplicationSerializer, MenuCategorySerializer,
     MenuItemSerializer, PromoSerializer, RatingSerializer, BugReportSerializer,
-    UserSerializer, UserProfileSerializer, SimpleCoffeeShopSerializer, MenuItemSizeSerializer, OpeningHourSerializer, PasswordResetSerializer, ChangePasswordSerializer
+    UserSerializer, UserProfileSerializer, SimpleCoffeeShopSerializer, MenuItemSizeSerializer,
+    OpeningHourSerializer, ChangePasswordSerializer, VerifyPasswordSerializer
 )
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -25,42 +27,85 @@ from rest_framework.exceptions import ValidationError
 from django.db.utils import IntegrityError
 from django.db.models import F
 from django.db.models.functions import ACos, Sin, Cos, Radians
-from django.shortcuts import get_object_or_404
-import logging
-import traceback
-from django.db import connection
+from rest_framework.response import Response
+from django.db.models import Count
+from django.utils import timezone
+from datetime import timedelta
 from django.contrib.auth import update_session_auth_hash
+from django.contrib.gis.geos import Point
+from django.contrib.gis.db.models.functions import Distance
+from django.db import DatabaseError
+from .utils import calculate_distance
 
-class ChangePasswordView(APIView):
-    permission_classes = [IsAuthenticated]
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verify_password(request):
+    serializer = VerifyPasswordSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        if user.check_password(serializer.data.get('old_password')):
+            return Response({'isValid': True}, status=status.HTTP_200_OK)
+        return Response({'isValid': False, 'error': 'Incorrect old password.'}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, *args, **kwargs):
-        serializer = ChangePasswordSerializer(data=request.data)
-        if serializer.is_valid():
-            user = request.user
-            if not user.check_password(serializer.validated_data['old_password']):
-                return Response({"old_password": "Wrong password."}, status=status.HTTP_400_BAD_REQUEST)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    serializer = ChangePasswordSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        user.set_password(serializer.data.get('new_password'))
+        user.save()
+        update_session_auth_hash(request, user)  # To keep the user logged in after password change
+        return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            # Set new password
-            user.set_password(serializer.validated_data['new_password'])
-            user.save()
 
-            # Update session to prevent logout
-            update_session_auth_hash(request, user)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_data(request):
+    # Assuming the authenticated user is the owner of the coffee shop
+    coffee_shop = request.user.coffee_shops.first()
 
-            return Response({"detail": "Password updated successfully."}, status=status.HTTP_200_OK)
+    if not coffee_shop:
+        return Response({"error": "No coffee shop found for this user"}, status=400)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # Get visits data for the last 30 days
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    visits_data = coffee_shop.visit_set.filter(timestamp__gte=thirty_days_ago) \
+        .extra(select={'date': 'DATE(timestamp)'}) \
+        .values('date') \
+        .annotate(visits=Count('id')) \
+        .order_by('date')
 
-class PasswordResetView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Get favorite count
+    favorite_count = coffee_shop.favorited_by.count()
 
-    def post(self, request):
-        serializer = PasswordResetSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # Get recent reviews
+    recent_reviews = coffee_shop.ratings.order_by('-created_at')[:3]
+
+    return Response({
+        "visits_data": list(visits_data),
+        "favorite_count": favorite_count,
+        "recent_reviews": [
+            {
+                "content": review.description,
+                "author": review.user.username,
+                "rating": review.stars
+            } for review in recent_reviews
+        ]
+    })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def record_visit(request):
+    coffee_shop_id = request.data.get('coffee_shop_id')
+    try:
+        coffee_shop = CoffeeShop.objects.get(id=coffee_shop_id)
+        Visit.objects.create(coffee_shop=coffee_shop, timestamp=timezone.now())
+        return Response({'status': 'Visit recorded successfully'}, status=201)
+    except CoffeeShop.DoesNotExist:
+        return Response({'error': 'Coffee shop not found'}, status=404)
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
@@ -203,24 +248,7 @@ class CoffeeShopViewSet(viewsets.ModelViewSet):
     serializer_class = CoffeeShopSerializer
     parser_classes = (MultiPartParser, FormParser)
     #permission_classes = [IsAuthenticated]
-    # Nearby coffee shops based on user location
-    @action(detail=False, methods=['get'])
-    def nearby(self, request):
-        latitude = float(request.query_params.get('latitude', 0))
-        longitude = float(request.query_params.get('longitude', 0))
-        radius_km = float(request.query_params.get('radius_km', 5))
 
-        # Simple Haversine formula-based distance calculation
-        nearby_shops = CoffeeShop.objects.annotate(
-            distance=ACos(
-                Sin(Radians(latitude)) * Sin(Radians(F('latitude'))) +
-                Cos(Radians(latitude)) * Cos(Radians(F('latitude'))) *
-                Cos(Radians(F('longitude')) - Radians(longitude))
-            ) * 6371  # Earth radius in km
-        ).filter(distance__lt=radius_km)
-
-        serializer = self.get_serializer(nearby_shops, many=True)
-        return Response(serializer.data)
     @api_view(['GET'])
     def coffee_shops_list(request):
         try:
@@ -392,34 +420,52 @@ class OpeningHourViewSet(viewsets.ModelViewSet):
         coffee_shop = CoffeeShop.objects.get(owner=self.request.user)
         serializer.save(coffee_shop=coffee_shop)
 
+logger = logging.getLogger(__name__)
+
 class CoffeeShopDetailViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CoffeeShop.objects.all()
     serializer_class = CoffeeShopSerializer
 
     def get_coffee_shop_detail(self, instance):
-        serializer = self.get_serializer(instance)
+        try:
+            serializer = self.get_serializer(instance)
+            menu_categories = MenuCategory.objects.filter(coffee_shop=instance).prefetch_related('items')
+            promos = Promo.objects.filter(coffee_shop=instance)
+            ratings = Rating.objects.filter(coffee_shop=instance)
+            opening_hours = OpeningHour.objects.filter(coffee_shop=instance)
 
-        menu_categories = MenuCategory.objects.filter(coffee_shop=instance).prefetch_related('items')
-        promos = Promo.objects.filter(coffee_shop=instance)
-        ratings = Rating.objects.filter(coffee_shop=instance)
-        opening_hours = OpeningHour.objects.filter(coffee_shop=instance)
+            data = {
+                **serializer.data,
+                'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': self.request}).data,
+                'promos': PromoSerializer(promos, many=True, context={'request': self.request}).data,
+                'ratings': RatingSerializer(ratings, many=True).data,
+                'opening_hours': OpeningHourSerializer(opening_hours, many=True).data,
+            }
 
-        return {
-            **serializer.data,
-            'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': self.request}).data,
-            'promos': PromoSerializer(promos, many=True, context={'request': self.request}).data,
-            'ratings': RatingSerializer(ratings, many=True).data,
-            'opening_hours': OpeningHourSerializer(opening_hours, many=True).data,
-        }
+            if hasattr(instance, 'distance'):
+                data['distance'] = instance.distance.km
+
+            return data
+        except Exception as e:
+            logger.error(f"Error in get_coffee_shop_detail: {str(e)}", exc_info=True)
+            raise
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        coffee_shops = [self.get_coffee_shop_detail(shop) for shop in queryset]
-        return Response(coffee_shops)
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            coffee_shops = [self.get_coffee_shop_detail(shop) for shop in queryset]
+            return Response(coffee_shops)
+        except Exception as e:
+            logger.error(f"Error in list: {str(e)}", exc_info=True)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        return Response(self.get_coffee_shop_detail(instance))
+        try:
+            instance = self.get_object()
+            return Response(self.get_coffee_shop_detail(instance))
+        except Exception as e:
+            logger.error(f"Error in retrieve: {str(e)}", exc_info=True)
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CoffeeShopDetailView(generics.RetrieveAPIView):
     queryset = CoffeeShop.objects.all()

@@ -7,7 +7,9 @@ from api.views import (
     RegisterUserView, CoffeeShopViewSet, CoffeeShopApplicationViewSet,
     MenuCategoryViewSet, MenuItemViewSet, PromoViewSet, RatingViewSet,
     BugReportViewSet, MyTokenObtainPairView, OwnerTokenObtainPairView,
-    custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView, OpeningHourViewSet, PasswordResetView, ChangePasswordView,CoffeeShopDetailViewSet
+    custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView,
+    OpeningHourViewSet,CoffeeShopDetailViewSet, dashboard_data, record_visit,
+    change_password, verify_password
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -30,9 +32,9 @@ urlpatterns = [
     path('api/owner/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/profile/', UserProfileView.as_view(), name='user-profile'),
     path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
-    path('api/reset-password/', PasswordResetView.as_view(), name='reset-password'),
-    path('api/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('api/dashboard/', dashboard_data, name='dashboard-data'),
     path('api/coffeeshoplist/', CoffeeShopDetailViewSet.as_view({'get': 'list'})),
+
     # Updated URL patterns for coffee shop-specific data
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/', MenuCategoryViewSet.as_view({'get': 'list', 'post': 'create'}), name='menu-category-list'),
     path('api/coffee-shops/<int:coffee_shop_id>/menu-categories/<int:pk>/', MenuCategoryViewSet.as_view({'put': 'update', 'delete': 'destroy'}), name='menu-category-detail'),
@@ -45,7 +47,9 @@ urlpatterns = [
 
     # New URL patterns for managing favorite coffee shops
     path('api/users/favorite-coffee-shops/', UserProfileViewSet.as_view({'get': 'favorite_coffee_shops', 'post': 'add_favorite_coffee_shop', 'delete': 'remove_favorite_coffee_shop'}), name='favorite-coffee-shops'),
-
+    path('api/record-visit/', record_visit, name='record-visit'),
+    path('api/verify-password/', verify_password, name='change-password'),
+    path('api/change-password/', change_password, name='change-password'),
     path('api/coffeeshops/<int:pk>/', CoffeeShopDetailView.as_view(), name='coffee-shop-detail'),
     path('api/coffee-shops/<int:coffee_shop_id>/ratings/', RatingViewSet.as_view({'get': 'list', 'post': 'create'}), name='rating-list'),
      # Rating-related URLs

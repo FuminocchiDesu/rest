@@ -6,6 +6,14 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
+from django.utils import timezone
+
+class Visit(models.Model):
+    coffee_shop = models.ForeignKey('CoffeeShop', on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Visit to {self.coffee_shop.name} at {self.timestamp}"
 
 class CoffeeShop(models.Model):
     name = models.CharField(max_length=100)

@@ -8,16 +8,21 @@ from django.core.exceptions import ValidationError
 import logging
 import traceback
 from django.db import IntegrityError
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.geos import Point
+
+class VerifyPasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
 
 class ChangePasswordSerializer(serializers.Serializer):
-    old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
-    confirm_new_password = serializers.CharField(required=True)
+    confirm_password = serializers.CharField(required=True)
 
     def validate(self, data):
-        if data['new_password'] != data['confirm_new_password']:
-            raise serializers.ValidationError("New passwords do not match.")
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": "The two password fields didn't match."})
         return data
+
 
 class SimpleCoffeeShopSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False)
@@ -184,7 +189,6 @@ class CoffeeShopSerializer(serializers.ModelSerializer):
             'average_rating',
             'owner'  # Include the owner field here
         ]
-
 
 
 class CoffeeShopApplicationSerializer(serializers.ModelSerializer):
