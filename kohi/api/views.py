@@ -32,10 +32,8 @@ from django.db.models import Count
 from django.utils import timezone
 from datetime import timedelta
 from django.contrib.auth import update_session_auth_hash
-from django.contrib.gis.geos import Point
-from django.contrib.gis.db.models.functions import Distance
-from django.db import DatabaseError
-from .utils import calculate_distance
+from django.db.models import F, ExpressionWrapper, FloatField
+from django.db.models.functions import Power, Sqrt
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -421,6 +419,59 @@ class OpeningHourViewSet(viewsets.ModelViewSet):
         serializer.save(coffee_shop=coffee_shop)
 
 logger = logging.getLogger(__name__)
+
+class NearbyCoffeeShopViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = CoffeeShopSerializer
+
+    def get_queryset(self):
+        latitude = self.request.query_params.get('latitude')
+        longitude = self.request.query_params.get('longitude')
+        radius = float(self.request.query_params.get('radius', 5000))  # Default 5km radius
+
+        if latitude and longitude:
+            lat = float(latitude)
+            lon = float(longitude)
+
+            # Log the input parameters
+            logger.info(f"Searching for coffee shops near lat: {lat}, lon: {lon}, radius: {radius}m")
+
+            # Calculate distance using Haversine formula
+            queryset = CoffeeShop.objects.annotate(
+                distance=ExpressionWrapper(
+                    6371 * Sqrt(
+                        Power(F('latitude') - lat, 2) +
+                        Power((F('longitude') - lon) * Sqrt(Power(F('latitude'), 2) + Power(lat, 2)), 2)
+                    ) * 1000,  # Convert to meters
+                    output_field=FloatField()
+                )
+            ).filter(distance__lte=radius)
+
+            # Log the number of shops found and their details
+            shops = list(queryset.order_by('distance'))
+            logger.info(f"Found {len(shops)} shops within {radius}m:")
+            for shop in shops:
+                logger.info(f"  - {shop.name}: {shop.distance:.2f}m")
+
+            return shops
+        return CoffeeShop.objects.none()
+
+    def list(self, request, *args, **kwargs):
+        try:
+            queryset = self.get_queryset()
+            if not queryset:
+                logger.warning("No nearby coffee shops found")
+                return Response([], status=status.HTTP_200_OK)
+
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
+            for item in data:
+                item['distance'] = float(item['distance'])  # Ensure distance is a float
+
+            logger.info(f"Returning {len(data)} coffee shops")
+            return Response(data)
+        except Exception as e:
+            logger.exception(f"Error in NearbyCoffeeShopViewSet: {str(e)}")
+            return Response({"error": "An error occurred while fetching nearby coffee shops"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CoffeeShopDetailViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CoffeeShop.objects.all()

@@ -7,6 +7,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 from django.utils import timezone
+from django.db.models import F, FloatField
+from django.db.models.functions import Power, Sqrt
 
 class Visit(models.Model):
     coffee_shop = models.ForeignKey('CoffeeShop', on_delete=models.CASCADE)
@@ -34,7 +36,22 @@ class CoffeeShop(models.Model):
     )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='coffee_shops')
     is_owner = models.BooleanField(default=False)
+    @classmethod
+    def nearby_shops(cls, latitude, longitude, radius=5000):
+        # Approximate conversion of meters to degrees (rough estimate)
+        degree_radius = radius / 111000  # 111km per degree
 
+        nearby_shops = cls.objects.annotate(
+            distance=Sqrt(
+                Power(F('latitude') - latitude, 2) +
+                Power(F('longitude') - longitude, 2)
+            ) * 111000  # Convert back to meters
+        ).filter(
+            latitude__range=(latitude - degree_radius, latitude + degree_radius),
+            longitude__range=(longitude - degree_radius, longitude + degree_radius),
+        ).order_by('distance')
+
+        return nearby_shops
     def __str__(self):
         return self.name
 

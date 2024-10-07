@@ -9,7 +9,7 @@ from api.views import (
     BugReportViewSet, MyTokenObtainPairView, OwnerTokenObtainPairView,
     custom_login, UserProfileViewSet, UserProfileView, CoffeeShopDetailView,
     OpeningHourViewSet,CoffeeShopDetailViewSet, dashboard_data, record_visit,
-    change_password, verify_password
+    change_password, verify_password, NearbyCoffeeShopViewSet
 )
 from django.conf import settings
 from django.conf.urls.static import static
@@ -21,6 +21,8 @@ router.register(r'applications', CoffeeShopApplicationViewSet)
 router.register(r'bug-reports', BugReportViewSet)
 router.register(r'users', UserProfileViewSet)
 router.register(r'opening-hours', OpeningHourViewSet, basename='opening-hour')
+router.register(r'nearby-coffee-shops', NearbyCoffeeShopViewSet, basename='nearby-coffee-shops')
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
