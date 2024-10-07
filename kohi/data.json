@@ -1,0 +1,916 @@
+[
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "admin",
+    "model": "logentry"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "auth",
+    "model": "permission"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "auth",
+    "model": "group"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "auth",
+    "model": "user"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "contenttypes",
+    "model": "contenttype"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "sessions",
+    "model": "session"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "visit"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "coffeeshop"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "userprofile"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "openinghour"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "coffeeshopapplication"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "menucategory"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "menuitem"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "menuitemsize"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "promo"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "rating"
+  }
+},
+{
+  "model": "contenttypes.contenttype",
+  "fields": {
+    "app_label": "api",
+    "model": "bugreport"
+  }
+},
+{
+  "model": "sessions.session",
+  "pk": "382dwht49unvgt6kegz0iljt1serb4j9",
+  "fields": {
+    "session_data": ".eJxVjEEOwiAQRe_C2pBhaGlx6d4zkGEYpGpoUtqV8e7apAvd_vfef6lA21rC1mQJU1JnZdTpd4vED6k7SHeqt1nzXNdlinpX9EGbvs5JnpfD_Tso1Mq3tinawSRgzB1g7L2DiKPgIN45ZJaYM0IHkj0Z5xkwA1ii0SBD6q16fwDehjew:1sxmyR:W9QHQ161rGt66JxAKBoHs2Z9kQTuuZq6WUpwmcGKBYs",
+    "expire_date": "2024-10-21T12:36:27.424Z"
+  }
+},
+{
+  "model": "sessions.session",
+  "pk": "zt339zb5qja7w141q1gxkfiwdseh2yzq",
+  "fields": {
+    "session_data": ".eJxVjEEOwiAQRe_C2pBhaGlx6d4zkGEYpGpoUtqV8e7apAvd_vfef6lA21rC1mQJU1JnZdTpd4vED6k7SHeqt1nzXNdlinpX9EGbvs5JnpfD_Tso1Mq3tinawSRgzB1g7L2DiKPgIN45ZJaYM0IHkj0Z5xkwA1ii0SBD6q16fwDehjew:1sxmzn:G6xjd8r7rhI5bF_1xsmQnkJa5_LvkvL3-tqoc10dYag",
+    "expire_date": "2024-10-21T12:37:51.771Z"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add log entry",
+    "content_type": [
+      "admin",
+      "logentry"
+    ],
+    "codename": "add_logentry"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change log entry",
+    "content_type": [
+      "admin",
+      "logentry"
+    ],
+    "codename": "change_logentry"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete log entry",
+    "content_type": [
+      "admin",
+      "logentry"
+    ],
+    "codename": "delete_logentry"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view log entry",
+    "content_type": [
+      "admin",
+      "logentry"
+    ],
+    "codename": "view_logentry"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add permission",
+    "content_type": [
+      "auth",
+      "permission"
+    ],
+    "codename": "add_permission"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change permission",
+    "content_type": [
+      "auth",
+      "permission"
+    ],
+    "codename": "change_permission"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete permission",
+    "content_type": [
+      "auth",
+      "permission"
+    ],
+    "codename": "delete_permission"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view permission",
+    "content_type": [
+      "auth",
+      "permission"
+    ],
+    "codename": "view_permission"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add group",
+    "content_type": [
+      "auth",
+      "group"
+    ],
+    "codename": "add_group"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change group",
+    "content_type": [
+      "auth",
+      "group"
+    ],
+    "codename": "change_group"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete group",
+    "content_type": [
+      "auth",
+      "group"
+    ],
+    "codename": "delete_group"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view group",
+    "content_type": [
+      "auth",
+      "group"
+    ],
+    "codename": "view_group"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add user",
+    "content_type": [
+      "auth",
+      "user"
+    ],
+    "codename": "add_user"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change user",
+    "content_type": [
+      "auth",
+      "user"
+    ],
+    "codename": "change_user"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete user",
+    "content_type": [
+      "auth",
+      "user"
+    ],
+    "codename": "delete_user"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view user",
+    "content_type": [
+      "auth",
+      "user"
+    ],
+    "codename": "view_user"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add content type",
+    "content_type": [
+      "contenttypes",
+      "contenttype"
+    ],
+    "codename": "add_contenttype"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change content type",
+    "content_type": [
+      "contenttypes",
+      "contenttype"
+    ],
+    "codename": "change_contenttype"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete content type",
+    "content_type": [
+      "contenttypes",
+      "contenttype"
+    ],
+    "codename": "delete_contenttype"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view content type",
+    "content_type": [
+      "contenttypes",
+      "contenttype"
+    ],
+    "codename": "view_contenttype"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add session",
+    "content_type": [
+      "sessions",
+      "session"
+    ],
+    "codename": "add_session"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change session",
+    "content_type": [
+      "sessions",
+      "session"
+    ],
+    "codename": "change_session"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete session",
+    "content_type": [
+      "sessions",
+      "session"
+    ],
+    "codename": "delete_session"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view session",
+    "content_type": [
+      "sessions",
+      "session"
+    ],
+    "codename": "view_session"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add visit",
+    "content_type": [
+      "api",
+      "visit"
+    ],
+    "codename": "add_visit"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change visit",
+    "content_type": [
+      "api",
+      "visit"
+    ],
+    "codename": "change_visit"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete visit",
+    "content_type": [
+      "api",
+      "visit"
+    ],
+    "codename": "delete_visit"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view visit",
+    "content_type": [
+      "api",
+      "visit"
+    ],
+    "codename": "view_visit"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add coffee shop",
+    "content_type": [
+      "api",
+      "coffeeshop"
+    ],
+    "codename": "add_coffeeshop"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change coffee shop",
+    "content_type": [
+      "api",
+      "coffeeshop"
+    ],
+    "codename": "change_coffeeshop"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete coffee shop",
+    "content_type": [
+      "api",
+      "coffeeshop"
+    ],
+    "codename": "delete_coffeeshop"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view coffee shop",
+    "content_type": [
+      "api",
+      "coffeeshop"
+    ],
+    "codename": "view_coffeeshop"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add user profile",
+    "content_type": [
+      "api",
+      "userprofile"
+    ],
+    "codename": "add_userprofile"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change user profile",
+    "content_type": [
+      "api",
+      "userprofile"
+    ],
+    "codename": "change_userprofile"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete user profile",
+    "content_type": [
+      "api",
+      "userprofile"
+    ],
+    "codename": "delete_userprofile"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view user profile",
+    "content_type": [
+      "api",
+      "userprofile"
+    ],
+    "codename": "view_userprofile"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add opening hour",
+    "content_type": [
+      "api",
+      "openinghour"
+    ],
+    "codename": "add_openinghour"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change opening hour",
+    "content_type": [
+      "api",
+      "openinghour"
+    ],
+    "codename": "change_openinghour"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete opening hour",
+    "content_type": [
+      "api",
+      "openinghour"
+    ],
+    "codename": "delete_openinghour"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view opening hour",
+    "content_type": [
+      "api",
+      "openinghour"
+    ],
+    "codename": "view_openinghour"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add coffee shop application",
+    "content_type": [
+      "api",
+      "coffeeshopapplication"
+    ],
+    "codename": "add_coffeeshopapplication"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change coffee shop application",
+    "content_type": [
+      "api",
+      "coffeeshopapplication"
+    ],
+    "codename": "change_coffeeshopapplication"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete coffee shop application",
+    "content_type": [
+      "api",
+      "coffeeshopapplication"
+    ],
+    "codename": "delete_coffeeshopapplication"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view coffee shop application",
+    "content_type": [
+      "api",
+      "coffeeshopapplication"
+    ],
+    "codename": "view_coffeeshopapplication"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add menu category",
+    "content_type": [
+      "api",
+      "menucategory"
+    ],
+    "codename": "add_menucategory"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change menu category",
+    "content_type": [
+      "api",
+      "menucategory"
+    ],
+    "codename": "change_menucategory"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete menu category",
+    "content_type": [
+      "api",
+      "menucategory"
+    ],
+    "codename": "delete_menucategory"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view menu category",
+    "content_type": [
+      "api",
+      "menucategory"
+    ],
+    "codename": "view_menucategory"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add menu item",
+    "content_type": [
+      "api",
+      "menuitem"
+    ],
+    "codename": "add_menuitem"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change menu item",
+    "content_type": [
+      "api",
+      "menuitem"
+    ],
+    "codename": "change_menuitem"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete menu item",
+    "content_type": [
+      "api",
+      "menuitem"
+    ],
+    "codename": "delete_menuitem"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view menu item",
+    "content_type": [
+      "api",
+      "menuitem"
+    ],
+    "codename": "view_menuitem"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add menu item size",
+    "content_type": [
+      "api",
+      "menuitemsize"
+    ],
+    "codename": "add_menuitemsize"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change menu item size",
+    "content_type": [
+      "api",
+      "menuitemsize"
+    ],
+    "codename": "change_menuitemsize"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete menu item size",
+    "content_type": [
+      "api",
+      "menuitemsize"
+    ],
+    "codename": "delete_menuitemsize"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view menu item size",
+    "content_type": [
+      "api",
+      "menuitemsize"
+    ],
+    "codename": "view_menuitemsize"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add promo",
+    "content_type": [
+      "api",
+      "promo"
+    ],
+    "codename": "add_promo"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change promo",
+    "content_type": [
+      "api",
+      "promo"
+    ],
+    "codename": "change_promo"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete promo",
+    "content_type": [
+      "api",
+      "promo"
+    ],
+    "codename": "delete_promo"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view promo",
+    "content_type": [
+      "api",
+      "promo"
+    ],
+    "codename": "view_promo"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add rating",
+    "content_type": [
+      "api",
+      "rating"
+    ],
+    "codename": "add_rating"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change rating",
+    "content_type": [
+      "api",
+      "rating"
+    ],
+    "codename": "change_rating"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete rating",
+    "content_type": [
+      "api",
+      "rating"
+    ],
+    "codename": "delete_rating"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view rating",
+    "content_type": [
+      "api",
+      "rating"
+    ],
+    "codename": "view_rating"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can add bug report",
+    "content_type": [
+      "api",
+      "bugreport"
+    ],
+    "codename": "add_bugreport"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can change bug report",
+    "content_type": [
+      "api",
+      "bugreport"
+    ],
+    "codename": "change_bugreport"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can delete bug report",
+    "content_type": [
+      "api",
+      "bugreport"
+    ],
+    "codename": "delete_bugreport"
+  }
+},
+{
+  "model": "auth.permission",
+  "fields": {
+    "name": "Can view bug report",
+    "content_type": [
+      "api",
+      "bugreport"
+    ],
+    "codename": "view_bugreport"
+  }
+},
+{
+  "model": "auth.user",
+  "fields": {
+    "password": "pbkdf2_sha256$870000$uhrAdsycYtv9wvnLyukTsy$uuDaP6jrkypOVnBzhP1T1I1zPVFvmnHKGb1DqbHwP8A=",
+    "last_login": "2024-10-07T12:37:51.766Z",
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2024-10-07T12:36:23.596Z",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "api.userprofile",
+  "pk": 1,
+  "fields": {
+    "user": [
+      "admin"
+    ],
+    "bio": "",
+    "contact_number": "",
+    "full_name": "",
+    "profile_picture": "profile_pictures/default.png",
+    "favorite_coffee_shops": []
+  }
+}
+]
