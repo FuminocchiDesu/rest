@@ -27,7 +27,7 @@ GOOGLE_MAPS_API_KEY = 'AIzaSyBEvPia5JJC-eYWLlO_Zlt27cDnPuyJxmw'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.1.8']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
