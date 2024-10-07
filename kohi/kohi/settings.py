@@ -27,7 +27,7 @@ GOOGLE_MAPS_API_KEY = 'AIzaSyBEvPia5JJC-eYWLlO_Zlt27cDnPuyJxmw'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["khlcle.pythonanywhere.com"]
+ALLOWED_HOSTS = []
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'api',
     'django_filters',
-    'django.contrib.gis',
+    #'django.contrib.gis',
 
 ]
 REST_FRAMEWORK = {
@@ -159,11 +159,8 @@ USE_I18N = True
 
 USE_TZ = True
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:8081",
-    # Add any other origins you want to allow
-]
+CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/

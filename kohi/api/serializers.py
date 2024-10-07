@@ -8,8 +8,7 @@ from django.core.exceptions import ValidationError
 import logging
 import traceback
 from django.db import IntegrityError
-from django.contrib.gis.db.models.functions import Distance
-from django.contrib.gis.geos import Point
+
 
 class VerifyPasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
