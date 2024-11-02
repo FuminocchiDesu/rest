@@ -1,4 +1,3 @@
-#backend/api/views.py
 from rest_framework import viewsets, generics, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
@@ -9,15 +8,14 @@ from django.contrib.auth import authenticate
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
-#from rest_framework import status
-from .models import (CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating,
-                    BugReport, UserProfile, MenuItemSize, OpeningHour, Visit)
+from .models import (CoffeeShop, CoffeeShopApplication, MenuCategory, MenuItem, Promo, Rating, RatingToken, MenuItemImage,
+                    BugReport, UserProfile, MenuItemSize, OpeningHour, Visit, PasswordResetCode, PasswordResetAttempt, ContactInformation)
 from .serializers import (
-    CoffeeShopSerializer, CoffeeShopApplicationSerializer, MenuCategorySerializer,
-    MenuItemSerializer, PromoSerializer, RatingSerializer, BugReportSerializer,
-    UserSerializer, UserProfileSerializer, SimpleCoffeeShopSerializer, MenuItemSizeSerializer,
-    OpeningHourSerializer, ChangePasswordSerializer, VerifyPasswordSerializer
-)
+    CoffeeShopSerializer, MenuCategorySerializer, CoffeeShopApplicationSerializer,
+    MenuItemSerializer, PromoSerializer, RatingSerializer, BugReportSerializer, PasswordResetSerializer, ContactInformationSerializer,
+    UserSerializer, UserProfileSerializer, SimpleCoffeeShopSerializer, MenuItemSizeSerializer, RatingTokenSerializer,
+    OpeningHourSerializer, ChangePasswordSerializer, VerifyPasswordSerializer, UserRegistrationSerializer, MenuItemImageSerializer, UpdateEmailSerializer,
+    UpdateUsernameSerializer)
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 import logging
@@ -27,13 +25,30 @@ from rest_framework.exceptions import ValidationError
 from django.db.utils import IntegrityError
 from django.db.models import F
 from django.db.models.functions import ACos, Sin, Cos, Radians
-from rest_framework.response import Response
-from django.db.models import Count
+from django.db.models import Count, Avg
 from django.utils import timezone
 from datetime import timedelta
 from django.contrib.auth import update_session_auth_hash
-from django.db.models import F, ExpressionWrapper, FloatField
-from django.db.models.functions import Power, Sqrt
+from django.db.models import ExpressionWrapper, FloatField
+from django.shortcuts import get_object_or_404
+import json
+from django.core.mail import send_mail, EmailMessage
+from django.conf import settings
+from django.urls import reverse
+from django.utils.http import urlsafe_base64_encode
+from django.template.loader import render_to_string
+from django.utils.encoding import force_bytes
+from anymail.message import AnymailMessage
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_str
+from django.shortcuts import render
+from django.http import JsonResponse
+import random
+import string
+import qrcode
+import io
+from django.http import HttpResponse
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -58,33 +73,99 @@ def change_password(request):
         return Response({'message': 'Password changed successfully.'}, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_email(request):
+    serializer = UpdateEmailSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        user.email = serializer.data.get('new_email')
+        user.save()
+        return Response({'message': 'Email updated successfully.'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_username(request):
+    serializer = UpdateUsernameSerializer(data=request.data)
+    if serializer.is_valid():
+        user = request.user
+        user.username = serializer.data.get('new_username')
+        user.save()
+        return Response({'message': 'Username updated successfully.'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+def get_date_range(filter_type):
+    now = timezone.now()
+    if filter_type == 'day':
+        start_date = now - timedelta(days=1)
+    elif filter_type == 'week':
+        start_date = now - timedelta(weeks=1)
+    elif filter_type == 'month':
+        start_date = now - timedelta(days=30)
+    else:  # year
+        start_date = now - timedelta(days=365)
+    return start_date
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_data(request):
-    # Assuming the authenticated user is the owner of the coffee shop
     coffee_shop = request.user.coffee_shops.first()
-
     if not coffee_shop:
         return Response({"error": "No coffee shop found for this user"}, status=400)
-
-    # Get visits data for the last 30 days
-    thirty_days_ago = timezone.now() - timedelta(days=30)
-    visits_data = coffee_shop.visit_set.filter(timestamp__gte=thirty_days_ago) \
-        .extra(select={'date': 'DATE(timestamp)'}) \
-        .values('date') \
-        .annotate(visits=Count('id')) \
-        .order_by('date')
 
     # Get favorite count
     favorite_count = coffee_shop.favorited_by.count()
 
-    # Get recent reviews
+    return Response({
+        "favorite_count": favorite_count
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def visits_data(request):
+    coffee_shop = request.user.coffee_shops.first()
+    if not coffee_shop:
+        return Response({"error": "No coffee shop found for this user"}, status=400)
+
+    filter_type = request.GET.get('filter', 'month')
+    start_date = get_date_range(filter_type)
+
+    visits_data = coffee_shop.visit_set.filter(
+        timestamp__gte=start_date
+    ).extra(
+        select={'date': 'DATE(timestamp)'}
+    ).values('date').annotate(
+        visits=Count('id')
+    ).order_by('date')
+
+    return Response({
+        "visits_data": list(visits_data)
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reviews_data(request):
+    coffee_shop = request.user.coffee_shops.first()
+    if not coffee_shop:
+        return Response({"error": "No coffee shop found for this user"}, status=400)
+
+    filter_type = request.GET.get('filter', 'month')
+    start_date = get_date_range(filter_type)
+
+    reviews_data = coffee_shop.ratings.filter(
+        created_at__gte=start_date
+    ).extra(
+        select={'date': 'DATE(created_at)'}
+    ).values('date').annotate(
+        average_rating=Avg('stars'),
+        review_count=Count('id')
+    ).order_by('date')
+
     recent_reviews = coffee_shop.ratings.order_by('-created_at')[:3]
 
     return Response({
-        "visits_data": list(visits_data),
-        "favorite_count": favorite_count,
+        "reviews_data": list(reviews_data),
         "recent_reviews": [
             {
                 "content": review.description,
@@ -108,7 +189,7 @@ def record_visit(request):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     @action(detail=False, methods=['get'])
     def favorite_coffee_shops(self, request):
         user = request.user
@@ -147,6 +228,8 @@ def custom_login(request):
 
     user = authenticate(username=username, password=password)
     if user is not None:
+        if not user.is_active or not user.profile.email_verified:
+            return Response({'error': 'Please verify your email before logging in.'}, status=status.HTTP_400_BAD_REQUEST)
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh': str(refresh),
@@ -154,6 +237,7 @@ def custom_login(request):
             'user': {'username': user.username, 'email': user.email}
         })
     return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
@@ -166,6 +250,8 @@ class UserProfileView(APIView):
     def put(self, request):
         serializer = UserProfileSerializer(request.user.profile, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
+            if 'profile_picture' in request.FILES:
+                serializer.validated_data['profile_picture'] = request.FILES['profile_picture']
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -176,10 +262,10 @@ class OwnerTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         user = User.objects.get(username=request.data['username'])
+
         if not user.is_staff:
             return Response({"detail": "Not authorized"}, status=403)
 
-        # Get the owner's coffee shop
         coffee_shop = CoffeeShop.objects.filter(owner=user).first()
         if coffee_shop:
             response.data['coffee_shop_id'] = coffee_shop.id
@@ -215,9 +301,24 @@ def create(self, validated_data):
 
     return user
 
+@api_view(['GET'])
+def verify_email(request, uidb64, token):
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        user.is_active = True  # Assuming you set user to inactive initially
+        user.profile.email_verified = True  # Update email verification status
+        user.save()
+        user.profile.save()  # Save the profile to ensure changes are persisted
+        return render(request, 'verification_success.html')  # Render the success template
+    else:
+        return Response({'error': 'Verification link is invalid or has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+
 logger = logging.getLogger(__name__)
-
-
 class RegisterUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -228,6 +329,10 @@ class RegisterUserView(generics.CreateAPIView):
         if serializer.is_valid():
             try:
                 user = serializer.save()
+                # Send verification email
+                self.send_verification_email(user, request)
+
+                # Generate tokens
                 refresh = RefreshToken.for_user(user)
                 response_data = {
                     'user': UserSerializer(user, context={'request': request}).data,
@@ -241,65 +346,412 @@ class RegisterUserView(generics.CreateAPIView):
                 return Response({'error': f'An unexpected error occurred during registration: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def send_verification_email(self, user, request):
+        token = generate_verification_token(user)  # Implement token generation
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        verification_link = request.build_absolute_uri(
+            reverse('verify_email', kwargs={'uidb64': uid, 'token': token})
+        )
+
+        subject = 'Activate Your Account'
+        message = render_to_string('email_verification.html', {
+            'user': user,
+            'verification_link': verification_link,
+        })
+
+        email = AnymailMessage(subject, message, to=[user.email])
+        email.send()
+def generate_verification_token(user):
+    # Implement your token generation logic here
+    # For example, using Django's built-in token generation methods
+    return default_token_generator.make_token(user)
+
+@csrf_exempt
+def password_reset_request(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email_or_username = data.get('email_or_username')
+
+            if not email_or_username:
+                return JsonResponse({"error": "Email or username is required."}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format."}, status=400)
+
+        # Try to retrieve the user by email or username
+        try:
+            user = User.objects.get(email=email_or_username)
+        except User.DoesNotExist:
+            try:
+                user = User.objects.get(username=email_or_username)
+            except User.DoesNotExist:
+                return JsonResponse({"error": "User with this email/username does not exist."}, status=400)
+
+        # Check the number of attempts today
+        today_attempts = PasswordResetAttempt.objects.filter(user=user, attempted_at__date=timezone.now().date()).count()
+        if today_attempts >= 3:
+            return JsonResponse({"error": "Maximum password reset attempts reached for today."}, status=429)
+
+        # Delete any previous reset code for the user
+        PasswordResetCode.objects.filter(user=user).delete()
+
+        # Generate a 6-digit verification code
+        code = ''.join(random.choices(string.digits, k=6))
+
+        # Save the code in the database
+        PasswordResetCode.objects.create(user=user, code=code)
+
+        # Save the attempt
+        PasswordResetAttempt.objects.create(user=user)
+
+        # Prepare email using the template
+        subject = 'Password Reset Code'
+        message = render_to_string('password_reset_email.html', {
+            'reset_code': code,
+            'user': user,
+        })
+
+        # Send email
+        try:
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            return JsonResponse({"error": f"Error sending email: {str(e)}"}, status=500)
+
+        return JsonResponse({"success": "Password reset code sent."})
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
+
+@csrf_exempt
+def verify_reset_code(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email_or_username = data.get('email_or_username')
+            reset_code = data.get('reset_code')  # Change to reset_code for consistency
+
+            if not email_or_username or not reset_code:
+                return JsonResponse({"error": "Email/username and reset code are required."}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format."}, status=400)
+
+        # Try to retrieve the user by email or username
+        try:
+            user = User.objects.get(email=email_or_username)
+        except User.DoesNotExist:
+            try:
+                user = User.objects.get(username=email_or_username)
+            except User.DoesNotExist:
+                return JsonResponse({"error": "User with this email/username does not exist."}, status=400)
+
+        # Retrieve the code for this user
+        try:
+            reset_code_obj = PasswordResetCode.objects.get(user=user, code=reset_code)
+            if reset_code_obj.is_expired():
+                return JsonResponse({"error": "The reset code has expired."}, status=400)
+        except PasswordResetCode.DoesNotExist:
+            return JsonResponse({"error": "Invalid reset code."}, status=400)
+
+        # Code is valid; allow user to proceed with resetting their password
+        return JsonResponse({"success": "Code verified. You may reset your password."})
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
+
+@api_view(['POST'])
+def reset_password(request):
+    email_or_username = request.data.get('email_or_username')
+    new_password = request.data.get('new_password')
+    reset_code_value = request.data.get('code')
+
+    # Validate email or username
+    try:
+        user = User.objects.get(email=email_or_username)
+    except User.DoesNotExist:
+        try:
+            user = User.objects.get(username=email_or_username)
+        except User.DoesNotExist:
+            return Response({'error': "User with this email/username does not exist."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate reset code
+    try:
+        reset_code = PasswordResetCode.objects.get(user=user, code=reset_code_value)
+        if reset_code.is_expired():
+            return Response({'error': "The code has expired."},
+                            status=status.HTTP_400_BAD_REQUEST)
+    except PasswordResetCode.DoesNotExist:
+        return Response({'error': "Invalid code."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Check password length
+    if len(new_password) < 8:
+        return Response({'error': "Password must be at least 8 characters long."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # Reset the password
+    user.set_password(new_password)
+    user.save()
+
+    # Delete the reset code
+    reset_code.delete()
+
+    return Response({'success': 'Password reset successfully'}, status=status.HTTP_200_OK)
+
+logger = logging.getLogger(__name__)
+
 class CoffeeShopViewSet(viewsets.ModelViewSet):
     queryset = CoffeeShop.objects.all()
     serializer_class = CoffeeShopSerializer
     parser_classes = (MultiPartParser, FormParser)
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
-    @api_view(['GET'])
-    def coffee_shops_list(request):
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Create the coffee shop with all fields set at once
+        coffee_shop = serializer.save(
+            owner=request.user,
+            is_owner=True,
+            is_under_maintenance=True,
+            is_terminated=False
+        )
+
+        # Set the user as staff
+        user = request.user
+        user.is_staff = True
+        user.save()
+
+        # Send HTML email to the owner
         try:
-            coffee_shops = CoffeeShop.objects.all()
-            # Serialize the coffee shops
-            serializer = CoffeeShopSerializer(coffee_shops, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    # Update location for a specific coffee shop
-    @action(detail=True, methods=['patch'])
-    def update_location(self, request, pk=None):
-        coffee_shop = self.get_object()
-        latitude = request.data.get('latitude')
-        longitude = request.data.get('longitude')
+            email = EmailMessage(
+                subject='Your Coffee Shop Account is Ready',
+                body=f'''
+                <html>
+                <body>
+                    <h1>Hello {user.username},</h1>
 
-        if latitude and longitude:
-            coffee_shop.latitude = latitude
-            coffee_shop.longitude = longitude
-            coffee_shop.save()
-            return Response({'status': 'location updated'})
-        return Response({'status': 'invalid coordinates'}, status=status.HTTP_400_BAD_REQUEST)
-    @action(detail=True, methods=['post'])
-    def rate(self, request, pk=None):
-        coffee_shop = self.get_object()
-        stars = request.data.get('stars')
-        description = request.data.get('description', '')
-        if stars is not None:
-            Rating.objects.update_or_create(
-                user=request.user,
-                coffee_shop=coffee_shop,
-                defaults={'stars': stars, 'description': description}
+                    <p>Your coffee shop account has been successfully created!</p>
+                    <p>Log in using your account, which you used to apply for the Coffee Shop</p>
+                    <p>To access your coffee shop page, please click the link below:</p>
+
+                    <p><a href="https://kohilocale.vercel.app/" style="display: inline-block;
+                        background-color: #4CAF50;
+                        color: white;
+                        padding: 10px 20px;
+                        text-decoration: none;
+                        border-radius: 5px;">
+                        Access Your Coffee Shop
+                    </a></p>
+
+                    <p>Best regards,<br>Kohi Locale Team</p>
+                </body>
+                </html>
+                ''',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[user.email],
             )
-            return Response({'status': 'rating set'})
-        return Response({'status': 'stars not provided'}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['get'])
-    def owner_coffee_shops(self, request):
-        shops = CoffeeShop.objects.filter(owner=request.user)
-        serializer = self.get_serializer(shops, many=True)
-        return Response(serializer.data)
+            # Set the email content type to HTML
+            email.content_subtype = "html"
+
+            # Send the email
+            email.send(fail_silently=False)
+
+        except Exception as e:
+            # Log the email sending error but don't prevent account creation
+            logger.error(f"Failed to send welcome email: {str(e)}")
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def get_queryset(self):
+        return CoffeeShop.objects.filter(owner=self.request.user)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def generate_qr(self, request, pk=None):
+        coffee_shop = self.get_object()
+        duration = request.query_params.get('duration', '1d')  # Get duration from query params
+
+        # Convert duration to timedelta
+        if duration == '1d':
+            expires_at = timezone.now() + timezone.timedelta(days=1)
+        elif duration == '1w':
+            expires_at = timezone.now() + timezone.timedelta(weeks=1)
+        elif duration == '1m':
+            expires_at = timezone.now() + timezone.timedelta(days=30)
+        else:
+            return Response({"error": "Invalid duration"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create a new RatingToken
+        token = RatingToken.objects.create(
+            coffee_shop=coffee_shop,
+            expires_at=expires_at
+        )
+
+        # Generate QR code
+        qr_data = f'https://khlcle.pythonanywhere.com/rate-coffee-shop/{token.token}/'
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        img = qr.make_image(fill='black', back_color='white')
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return HttpResponse(buffer, content_type='image/png')
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def latest_qr_code(self, request, pk=None):
+        coffee_shop = self.get_object()
+        latest_token = RatingToken.objects.filter(
+            coffee_shop=coffee_shop,
+            expires_at__gt=timezone.now()
+        ).order_by('-created_at').first()
+
+        if latest_token:
+            # Generate QR code
+            qr_data = f'https://khlcle.pythonanywhere.com/rate-coffee-shop/{latest_token.token}/'
+            qr = qrcode.QRCode(version=1, box_size=10, border=5)
+            qr.add_data(qr_data)
+            qr.make(fit=True)
+            img = qr.make_image(fill='black', back_color='white')
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            buffer.seek(0)
+            return HttpResponse(buffer, content_type='image/png')
+        else:
+            return Response({"message": "No active QR code found"}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def qr_metadata(self, request, pk=None):
+        coffee_shop = self.get_object()
+        latest_token = RatingToken.objects.filter(
+            coffee_shop=coffee_shop,
+            expires_at__gt=timezone.now()
+        ).order_by('-created_at').first()
+
+        if latest_token:
+            return Response({
+                'expires_at': latest_token.expires_at,
+                'created_at': latest_token.created_at
+            })
+        return Response({"message": "No active QR code found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET'])
+def validate_rating_token(request, token):
+    rating_token = get_object_or_404(RatingToken, token=token)
+
+    if not rating_token.is_valid():
+        return Response({"error": "Token has expired"}, status=400)
+
+    coffee_shop = rating_token.coffee_shop
+    serializer = CoffeeShopSerializer(coffee_shop)
+    return Response(serializer.data)
+
+
+class CoffeeShopOwnerViewSet(viewsets.ModelViewSet):
+    serializer_class = CoffeeShopSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CoffeeShop.objects.filter(owner=self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
-class CoffeeShopApplicationViewSet(viewsets.ModelViewSet):
-    queryset = CoffeeShopApplication.objects.all()
-    serializer_class = CoffeeShopApplicationSerializer
-    permission_classes = [IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # Handle is_under_maintenance update
+        if 'is_under_maintenance' in request.data:
+            instance.is_under_maintenance = request.data['is_under_maintenance']
+
+        # Handle is_terminated update
+        if 'is_terminated' in request.data:
+            instance.is_terminated = request.data['is_terminated']
+
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+class ContactInformationCreateUpdateView(generics.GenericAPIView):
+    # Rest of the view remains the same
+    #permission_classes = [IsAuthenticated]
+    serializer_class = ContactInformationSerializer
+
+    def get_coffee_shop(self, coffee_shop_id):
+        """Helper method to get coffee shop and verify ownership"""
+        coffee_shop = get_object_or_404(CoffeeShop, id=coffee_shop_id)
+        if coffee_shop.owner != self.request.user:
+            raise PermissionError("You don't have permission to access this coffee shop")
+        return coffee_shop
+
+    def get_object(self, coffee_shop_id):
+        coffee_shop = self.get_coffee_shop(coffee_shop_id)
+        return ContactInformation.objects.filter(coffee_shop=coffee_shop).first()
+
+    def get(self, request, coffee_shop_id):
+        try:
+            contact_info = self.get_object(coffee_shop_id)
+            if not contact_info:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            serializer = self.get_serializer(contact_info)
+            return Response(serializer.data)
+        except PermissionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    def post(self, request, coffee_shop_id):
+        try:
+            coffee_shop = self.get_coffee_shop(coffee_shop_id)
+            # Check if contact info already exists
+            existing_contact = self.get_object(coffee_shop_id)
+            if existing_contact:
+                return Response(
+                    {'error': 'Contact information already exists for this coffee shop'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(coffee_shop=coffee_shop)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    def put(self, request, coffee_shop_id):
+        try:
+            contact_info = self.get_object(coffee_shop_id)
+            if not contact_info:
+                # If no contact info exists, create it
+                return self.post(request, coffee_shop_id)
+            serializer = self.get_serializer(
+                contact_info,
+                data=request.data,
+                partial=True
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
 class MenuItemViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
@@ -307,93 +759,205 @@ class MenuItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        return MenuItem.objects.filter(category__coffee_shop_id=coffee_shop_id)
+        return MenuItem.objects.filter(
+            category__coffee_shop_id=coffee_shop_id,
+            category__coffee_shop__owner=self.request.user
+        ).prefetch_related('additional_images')
 
     def create(self, request, *args, **kwargs):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        category_id = request.data.get('category')
+        mutable_data = request.data.copy()
 
+        # Handle category
+        category_id = mutable_data.get('category')
         try:
-            category = MenuCategory.objects.get(id=category_id, coffee_shop_id=coffee_shop_id)
+            category = MenuCategory.objects.get(
+                id=category_id,
+                coffee_shop_id=coffee_shop_id,
+                coffee_shop__owner=self.request.user
+            )
         except MenuCategory.DoesNotExist:
-            return Response({"error": "Invalid category for this coffee shop"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid category for this coffee shop"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        request.data['category'] = category.id  # Ensure category ID is included in request data
+        # Handle sizes data
+        sizes_data = mutable_data.get('sizes')
+        if sizes_data:
+            if isinstance(sizes_data, str):
+                try:
+                    sizes_data = json.loads(sizes_data)
+                except json.JSONDecodeError:
+                    return Response(
+                        {"error": "Invalid JSON for sizes"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            mutable_data['sizes'] = sizes_data
 
-        # Ensure sizes are included in the request data
-        sizes_data = request.data.get('sizes', [])
-        if not sizes_data:
-            return Response({"error": "At least one size must be provided."}, status=status.HTTP_400_BAD_REQUEST)
+        # Handle additional images
+        additional_images = request.FILES.getlist('additional_images')
 
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=mutable_data)
         serializer.is_valid(raise_exception=True)
         menu_item = serializer.save(category=category)
 
+        # Create sizes if provided and no main price
+        if not menu_item.price and sizes_data:
+            for size_data in sizes_data:
+                MenuItemSize.objects.create(menu_item=menu_item, **size_data)
+
+        # Create additional images
+        for image in additional_images:
+            MenuItemImage.objects.create(menu_item=menu_item, image=image)
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+
+        # Handle additional images
+        additional_images = request.FILES.getlist('additional_images')
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Add new additional images if provided
+        for image in additional_images:
+            MenuItemImage.objects.create(menu_item=instance, image=image)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
+
+# Add this new view for managing additional images
+class MenuItemImageViewSet(viewsets.ModelViewSet):
+    serializer_class = MenuItemImageSerializer
+
+    def get_queryset(self):
+        menu_item_id = self.kwargs.get('menu_item_id')
+        return MenuItemImage.objects.filter(
+            menu_item_id=menu_item_id,
+            menu_item__category__coffee_shop__owner=self.request.user
+        )
+
+    def perform_create(self, serializer):
+        menu_item = get_object_or_404(
+            MenuItem,
+            id=self.kwargs.get('menu_item_id'),
+            category__coffee_shop__owner=self.request.user
+        )
+        serializer.save(menu_item=menu_item)
+
+
+# The rest of your viewsets remain the same
+class MenuItemSizeViewSet(viewsets.ModelViewSet):
+    serializer_class = MenuItemSizeSerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return MenuItemSize.objects.filter(menu_item__category__coffee_shop__owner=self.request.user)
 
 class MenuCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = MenuCategorySerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        return MenuCategory.objects.filter(coffee_shop_id=coffee_shop_id).prefetch_related('items')
+        return MenuCategory.objects.filter(coffee_shop_id=coffee_shop_id, coffee_shop__owner=self.request.user)
 
-    def create(self, request, *args, **kwargs):
+    def perform_create(self, serializer):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-
-        try:
-            coffee_shop = CoffeeShop.objects.get(id=coffee_shop_id)
-        except CoffeeShop.DoesNotExist:
-            return Response({"error": "Invalid coffee shop"}, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        coffee_shop = get_object_or_404(CoffeeShop, id=coffee_shop_id, owner=self.request.user)
         serializer.save(coffee_shop=coffee_shop)
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def perform_update(self, serializer):
+        coffee_shop_id = self.kwargs.get('coffee_shop_id')
+        coffee_shop = get_object_or_404(CoffeeShop, id=coffee_shop_id, owner=self.request.user)
+        serializer.save(coffee_shop=coffee_shop)
 
 class PromoViewSet(viewsets.ModelViewSet):
     serializer_class = PromoSerializer
-    #permission_classes = [IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        return Promo.objects.filter(coffee_shop_id=coffee_shop_id)
+        return Promo.objects.filter(coffee_shop_id=coffee_shop_id, coffee_shop__owner=self.request.user)
 
-    def create(self, request, *args, **kwargs):
+    def perform_create(self, serializer):
         coffee_shop_id = self.kwargs.get('coffee_shop_id')
-
-        try:
-            coffee_shop = CoffeeShop.objects.get(id=coffee_shop_id)
-        except CoffeeShop.DoesNotExist:
-            return Response({"error": "Invalid coffee shop"}, status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        coffee_shop = get_object_or_404(CoffeeShop, id=coffee_shop_id, owner=self.request.user)
         serializer.save(coffee_shop=coffee_shop)
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def perform_update(self, serializer):
+        coffee_shop_id = self.kwargs.get('coffee_shop_id')
+        coffee_shop = get_object_or_404(CoffeeShop, id=coffee_shop_id, owner=self.request.user)
+        serializer.save(coffee_shop=coffee_shop)
 
 class RatingViewSet(viewsets.ModelViewSet):
     serializer_class = RatingSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        coffee_shop_id = self.kwargs.get('coffee_shop_id')
-        return Rating.objects.filter(coffee_shop_id=coffee_shop_id)
+        shop_id = self.kwargs.get('coffee_shop_id')
+        if shop_id is not None:
+            return Rating.objects.filter(coffee_shop_id=shop_id)
+        return Rating.objects.all()
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
-    def user_rating(self, request, coffee_shop_id):
-        rating = self.queryset.filter(coffee_shop_id=coffee_shop_id, user=request.user).first()
-        if rating:
+    def user_rating(self, request, coffee_shop_id=None):
+        try:
+            rating = Rating.objects.get(coffee_shop_id=coffee_shop_id, user=request.user)
             serializer = self.get_serializer(rating)
             return Response(serializer.data)
-        return Response({"detail": "No rating found"}, status=status.HTTP_404_NOT_FOUND)
+        except Rating.DoesNotExist:
+            return Response(
+                {"id": 0, "stars": 0, "description": "", "created_at": ""},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    def update_user_rating(self, request, coffee_shop_id=None):
+        try:
+            rating = Rating.objects.get(coffee_shop_id=coffee_shop_id, user=request.user)
+            serializer = self.get_serializer(rating, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        except Rating.DoesNotExist:
+            return Response(
+                {"detail": "Rating not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    def create(self, request, *args, **kwargs):
+        # Check if user already has a rating for this coffee shop
+        coffee_shop_id = kwargs.get('coffee_shop_id')
+        existing_rating = Rating.objects.filter(
+            coffee_shop_id=coffee_shop_id,
+            user=request.user
+        ).first()
+
+        if existing_rating:
+            # Update existing rating instead of creating new one
+            serializer = self.get_serializer(existing_rating, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Proceed with original creation logic for new ratings
+        token_value = request.data.get('token')
+        token = get_object_or_404(RatingToken, token=token_value)
+        if not token.is_valid():
+            return Response(
+                {"detail": "Token has expired or is invalid."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user, coffee_shop=token.coffee_shop)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class BugReportViewSet(viewsets.ModelViewSet):
     queryset = BugReport.objects.all()
@@ -414,9 +978,32 @@ class OpeningHourViewSet(viewsets.ModelViewSet):
     serializer_class = OpeningHourSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_create(self, serializer):
+    def get_queryset(self):
+        return OpeningHour.objects.filter(coffee_shop__owner=self.request.user)
+
+    def create(self, request, *args, **kwargs):
         coffee_shop = CoffeeShop.objects.get(owner=self.request.user)
-        serializer.save(coffee_shop=coffee_shop)
+        # Delete existing opening hours for this coffee shop
+        OpeningHour.objects.filter(coffee_shop=coffee_shop).delete()
+
+        opening_hours_data = request.data if isinstance(request.data, list) else [request.data]
+        created_hours = []
+
+        for item in opening_hours_data:
+            serializer = self.get_serializer(data=item)
+            serializer.is_valid(raise_exception=True)
+            opening_hour = OpeningHour.objects.create(coffee_shop=coffee_shop, **serializer.validated_data)
+            created_hours.append(opening_hour)
+
+        # Serialize the created objects
+        response_serializer = self.get_serializer(created_hours, many=True)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
 
 logger = logging.getLogger(__name__)
 
@@ -424,54 +1011,78 @@ class NearbyCoffeeShopViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CoffeeShopSerializer
 
     def get_queryset(self):
-        latitude = self.request.query_params.get('latitude')
-        longitude = self.request.query_params.get('longitude')
-        radius = float(self.request.query_params.get('radius', 5000))  # Default 5km radius
+        try:
+            latitude = self.request.query_params.get('latitude')
+            longitude = self.request.query_params.get('longitude')
+            radius = float(self.request.query_params.get('radius', 5))  # Default 5km radius
 
-        if latitude and longitude:
-            lat = float(latitude)
-            lon = float(longitude)
+            if not latitude or not longitude:
+                raise ValidationError("Both latitude and longitude are required.")
 
-            # Log the input parameters
-            logger.info(f"Searching for coffee shops near lat: {lat}, lon: {lon}, radius: {radius}m")
+            latitude = float(latitude)
+            longitude = float(longitude)
 
-            # Calculate distance using Haversine formula
+            # Haversine formula
+            distance_expr = ExpressionWrapper(
+                6371 * ACos(
+                    Cos(Radians(latitude)) *
+                    Cos(Radians(F('latitude'))) *
+                    Cos(Radians(F('longitude')) - Radians(longitude)) +
+                    Sin(Radians(latitude)) *
+                    Sin(Radians(F('latitude')))
+                ),  # This now gives the result directly in kilometers
+                output_field=FloatField()
+            )
             queryset = CoffeeShop.objects.annotate(
-                distance=ExpressionWrapper(
-                    6371 * Sqrt(
-                        Power(F('latitude') - lat, 2) +
-                        Power((F('longitude') - lon) * Sqrt(Power(F('latitude'), 2) + Power(lat, 2)), 2)
-                    ) * 1000,  # Convert to meters
-                    output_field=FloatField()
-                )
-            ).filter(distance__lte=radius)
+                distance=distance_expr
+            ).filter(distance__lte=radius).order_by('distance')
+            return queryset
+        except ValidationError as ve:
+            logger.error(f"Validation error in get_queryset: {str(ve)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in get_queryset: {str(e)}", exc_info=True)
+            raise
 
-            # Log the number of shops found and their details
-            shops = list(queryset.order_by('distance'))
-            logger.info(f"Found {len(shops)} shops within {radius}m:")
-            for shop in shops:
-                logger.info(f"  - {shop.name}: {shop.distance:.2f}m")
-
-            return shops
-        return CoffeeShop.objects.none()
+    def get_coffee_shop_detail(self, instance):
+        try:
+            serializer = self.get_serializer(instance)
+            menu_categories = MenuCategory.objects.filter(coffee_shop=instance).prefetch_related('items')
+            promos = Promo.objects.filter(coffee_shop=instance)
+            ratings = Rating.objects.filter(coffee_shop=instance)
+            opening_hours = OpeningHour.objects.filter(coffee_shop=instance)
+            data = {
+                **serializer.data,
+                'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': self.request}).data,
+                'promos': PromoSerializer(promos, many=True, context={'request': self.request}).data,
+                'ratings': RatingSerializer(ratings, many=True).data,
+                'opening_hours': OpeningHourSerializer(opening_hours, many=True).data,
+            }
+            if hasattr(instance, 'distance'):
+                data['distance'] = round(instance.distance, 2)  # Round to 2 decimal places
+            return data
+        except Exception as e:
+            logger.error(f"Error in get_coffee_shop_detail: {str(e)}", exc_info=True)
+            raise
 
     def list(self, request, *args, **kwargs):
         try:
             queryset = self.get_queryset()
-            if not queryset:
-                logger.warning("No nearby coffee shops found")
-                return Response([], status=status.HTTP_200_OK)
-
-            serializer = self.get_serializer(queryset, many=True)
-            data = serializer.data
-            for item in data:
-                item['distance'] = float(item['distance'])  # Ensure distance is a float
-
-            logger.info(f"Returning {len(data)} coffee shops")
-            return Response(data)
+            coffee_shops = [self.get_coffee_shop_detail(shop) for shop in queryset]
+            return Response(coffee_shops)
+        except ValidationError as ve:
+            return Response({'error': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.exception(f"Error in NearbyCoffeeShopViewSet: {str(e)}")
-            return Response({"error": "An error occurred while fetching nearby coffee shops"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error in list: {str(e)}", exc_info=True)
+            return Response({'error': 'An unexpected error occurred. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            return Response(self.get_coffee_shop_detail(instance))
+        except Exception as e:
+            logger.error(f"Error in retrieve: {str(e)}", exc_info=True)
+            return Response({'error': 'An unexpected error occurred. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CoffeeShopDetailViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CoffeeShop.objects.all()
@@ -518,6 +1129,15 @@ class CoffeeShopDetailViewSet(viewsets.ReadOnlyModelViewSet):
             logger.error(f"Error in retrieve: {str(e)}", exc_info=True)
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class CoffeeShopApplicationViewSet(viewsets.ModelViewSet):
+    queryset = CoffeeShopApplication.objects.all()
+    serializer_class = CoffeeShopApplicationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CoffeeShopApplication.objects.filter(user=self.request.user)
+
+
 class CoffeeShopDetailView(generics.RetrieveAPIView):
     queryset = CoffeeShop.objects.all()
     serializer_class = CoffeeShopSerializer
@@ -532,16 +1152,43 @@ class CoffeeShopDetailView(generics.RetrieveAPIView):
         ratings = Rating.objects.filter(coffee_shop=coffee_shop)
         opening_hours = OpeningHour.objects.filter(coffee_shop=coffee_shop)
 
-        # Add latitude and longitude to the response
+        # Fetch contact information
+        try:
+            contact_info = coffee_shop.contact_info
+            contact_data = {
+                'contact_name': contact_info.contact_name,
+                'primary_phone': contact_info.primary_phone,
+                'secondary_phone': contact_info.secondary_phone,
+                'email': contact_info.email,
+                'website': contact_info.website,
+                'facebook': contact_info.facebook,
+                'instagram': contact_info.instagram,
+                'twitter': contact_info.twitter,
+            }
+        except ContactInformation.DoesNotExist:
+            contact_data = {
+                'contact_name': None,
+                'primary_phone': None,
+                'secondary_phone': None,
+                'email': None,
+                'website': None,
+                'facebook': None,
+                'instagram': None,
+                'twitter': None,
+            }
+
+        # Add latitude, longitude, is_under_maintenance, and contact information to the response
         return Response({
             'coffee_shop': {
                 **serializer.data,
                 'latitude': coffee_shop.latitude,
                 'longitude': coffee_shop.longitude,
+                'is_under_maintenance': coffee_shop.is_under_maintenance,
+                'contact_information': contact_data,
             },
             'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': request}).data,
             'promos': PromoSerializer(promos, many=True, context={'request': request}).data,
             'ratings': RatingSerializer(ratings, many=True).data,
-            'opening_hours': OpeningHourSerializer(opening_hours, many=True, context={'request': request}).data,  # Add this line
+            'opening_hours': OpeningHourSerializer(opening_hours, many=True, context={'request': request}).data,
         })
 

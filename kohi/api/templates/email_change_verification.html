@@ -1,0 +1,14 @@
+<!-- templates/email_change_verification.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Email Change Verification</title>
+</head>
+<body>
+    <p>Hello {{ user.username }},</p>
+    <p>You requested to change your email address. Your verification code is:</p>
+    <h3>{{ verification_code }}</h3>
+    <p>Enter this code in the app to verify your new email address. This code will expire in 10 minutes.</p>
+    <p>If you didn't request this change, please ignore this email and consider updating your password.</p>
+</body>
+</html>

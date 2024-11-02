@@ -12,7 +12,7 @@ class UserProfileAdmin(admin.ModelAdmin):
 class CoffeeShopAdminForm(forms.ModelForm):
     class Meta:
         model = CoffeeShop
-        fields = ['name', 'address', 'description', 'latitude', 'longitude', 'image', 'owner', 'is_owner']
+        fields = ['name', 'address', 'description', 'latitude', 'longitude', 'image', 'owner', 'is_owner', 'is_under_maintenance', 'is_terminated']
 
     class Media:
         js = (
