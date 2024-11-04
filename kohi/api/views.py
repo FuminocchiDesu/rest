@@ -813,20 +813,94 @@ class MenuItemViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def remove_primary_image(self, request, *args, **kwargs):
+        menu_item = self.get_object()
+        if menu_item.image:
+            # Delete the actual file
+            menu_item.image.delete(save=False)
+            menu_item.image = None
+            menu_item.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def remove_additional_image(self, request, *args, **kwargs):
+        menu_item = self.get_object()
+        image_id = kwargs.get('image_id')
+        try:
+            image = menu_item.additional_images.get(id=image_id)
+            # Delete the actual file
+            image.image.delete(save=False)
+            image.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MenuItemImage.DoesNotExist:
+            return Response(
+                {"error": "Image not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    def remove_size(self, request, *args, **kwargs):
+        menu_item = self.get_object()
+        size_id = kwargs.get('size_id')
+        try:
+            size = menu_item.sizes.get(id=size_id)
+            size.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except MenuItemSize.DoesNotExist:
+            return Response(
+                {"error": "Size not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
 
+        # Handle sizes data
+        sizes_data = request.data.get('sizes')
+        if sizes_data:
+            if isinstance(sizes_data, str):
+                try:
+                    sizes_data = json.loads(sizes_data)
+                except json.JSONDecodeError:
+                    return Response(
+                        {"error": "Invalid JSON for sizes"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Get existing size IDs from the data
+                submitted_size_ids = set(
+                    size.get('id') for size in sizes_data
+                    if size.get('id') is not None
+                )
+
+                # Delete sizes that aren't in the submitted data
+                instance.sizes.exclude(id__in=submitted_size_ids).delete()
+
+                # Update or create sizes
+                for size_data in sizes_data:
+                    size_id = size_data.get('id')
+                    if size_id:
+                        # Update existing size
+                        try:
+                            size = instance.sizes.get(id=size_id)
+                            for key, value in size_data.items():
+                                if key != 'id':  # Skip updating the ID field
+                                    setattr(size, key, value)
+                            size.save()
+                        except MenuItemSize.DoesNotExist:
+                            continue
+                    else:
+                        # Create new size
+                        size_data.pop('id', None)  # Remove null id if present
+                        MenuItemSize.objects.create(menu_item=instance, **size_data)
+
         # Handle additional images
         additional_images = request.FILES.getlist('additional_images')
+        for image in additional_images:
+            MenuItemImage.objects.create(menu_item=instance, image=image)
 
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-
-        # Add new additional images if provided
-        for image in additional_images:
-            MenuItemImage.objects.create(menu_item=instance, image=image)
 
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
