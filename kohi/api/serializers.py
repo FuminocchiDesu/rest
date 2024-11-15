@@ -325,7 +325,7 @@ class CoffeeShopSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
     average_rating = serializers.FloatField(read_only=True)
     image = serializers.ImageField(required=False)
-
+    dti_permit = serializers.FileField(required=False)  # Add this line
     class Meta:
         model = CoffeeShop
         fields = [
@@ -338,9 +338,10 @@ class CoffeeShopSerializer(serializers.ModelSerializer):
             'latitude',
             'longitude',
             'average_rating',
-            'owner',  # Include the owner field here
+            'owner',
             'is_under_maintenance',
-            'is_terminated'
+            'is_terminated',
+            'dti_permit',  # Add this line
         ]
 
     def create(self, validated_data):
@@ -436,6 +437,7 @@ class MenuItemSerializer(serializers.ModelSerializer):
     sizes = MenuItemSizeSerializer(many=True, required=False)
     image = serializers.ImageField(required=False)
     additional_images = MenuItemImageSerializer(many=True, required=False, read_only=True)
+    description = serializers.CharField(required=False, allow_blank=True)  # Made optional
 
     class Meta:
         model = MenuItem

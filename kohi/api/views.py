@@ -49,6 +49,10 @@ import string
 import qrcode
 import io
 from django.http import HttpResponse
+from django.core.files.storage import default_storage
+import os
+from django.core.files.uploadedfile import InMemoryUploadedFile
+import PyPDF2
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -246,14 +250,32 @@ class UserProfileView(APIView):
     def get(self, request):
         serializer = UserProfileSerializer(request.user.profile, context={'request': request})
         return Response(serializer.data)
-
     def put(self, request):
-        serializer = UserProfileSerializer(request.user.profile, data=request.data, partial=True, context={'request': request})
+        profile = request.user.profile
+        old_image_path = None
+
+        # Store the old image path if it exists and is not the default
+        if profile.profile_picture and hasattr(profile.profile_picture, 'name'):
+            if not profile.profile_picture.name.endswith('default.png'):
+                old_image_path = profile.profile_picture.path
+
+        serializer = UserProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
+
         if serializer.is_valid():
             if 'profile_picture' in request.FILES:
+                # Save new image
                 serializer.validated_data['profile_picture'] = request.FILES['profile_picture']
+                # Delete old image if it exists and is not default
+                if old_image_path and os.path.exists(old_image_path):
+                    try:
+                        os.remove(old_image_path)
+                    except Exception as e:
+                        # Log the error but don't stop the update process
+                        print(f"Error deleting old profile picture: {e}")
+
             serializer.save()
             return Response(serializer.data)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class OwnerTokenObtainPairView(TokenObtainPairView):
@@ -510,64 +532,88 @@ class CoffeeShopViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        # Create the coffee shop with all fields set at once
-        coffee_shop = serializer.save(
-            owner=request.user,
-            is_owner=True,
-            is_under_maintenance=True,
-            is_terminated=False
-        )
-
-        # Set the user as staff
-        user = request.user
-        user.is_staff = True
-        user.save()
-
-        # Send HTML email to the owner
         try:
-            email = EmailMessage(
-                subject='Your Coffee Shop Account is Ready',
-                body=f'''
-                <html>
-                <body>
-                    <h1>Hello {user.username},</h1>
+            # Validate required fields
+            required_fields = ['name', 'address', 'description', 'latitude', 'longitude']
+            for field in required_fields:
+                if field not in request.data:
+                    return Response(
+                        {"error": f"{field} is required"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-                    <p>Your coffee shop account has been successfully created!</p>
-                    <p>Log in using your account, which you used to apply for the Coffee Shop</p>
-                    <p>To access your coffee shop page, please click the link below:</p>
+            serializer = self.get_serializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(
+                    {"error": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-                    <p><a href="https://kohilocale.vercel.app/" style="display: inline-block;
-                        background-color: #4CAF50;
-                        color: white;
-                        padding: 10px 20px;
-                        text-decoration: none;
-                        border-radius: 5px;">
-                        Access Your Coffee Shop
-                    </a></p>
+            # Validate DTI permit
+            dti_permit = request.FILES.get('dti_permit')
+            if not dti_permit:
+                return Response(
+                    {"error": "DTI permit is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-                    <p>Best regards,<br>Kohi Locale Team</p>
-                </body>
-                </html>
-                ''',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[user.email],
+            if not dti_permit.content_type == 'application/pdf':
+                return Response(
+                    {"error": "DTI permit must be a PDF file"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Process DTI permit
+            try:
+                file_copy = io.BytesIO(dti_permit.read())
+                dti_permit.seek(0)
+                pdf_reader = PyPDF2.PdfReader(file_copy)
+                pdf_text = ''
+                for page in pdf_reader.pages:
+                    pdf_text += page.extract_text()
+
+                if not verify_dti_permit(pdf_text):
+                    return Response(
+                        {"error": "Invalid DTI permit"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Exception as e:
+                logger.error(f"DTI permit processing error: {str(e)}")
+                return Response(
+                    {"error": "Error processing DTI permit"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create coffee shop
+            coffee_shop = serializer.save(
+                owner=request.user,
+                is_owner=True,
+                is_under_maintenance=False,
+                is_terminated=False
             )
 
-            # Set the email content type to HTML
-            email.content_subtype = "html"
+            # Update user status
+            request.user.is_staff = True
+            request.user.save()
 
-            # Send the email
-            email.send(fail_silently=False)
+            # Send welcome email
+            try:
+                send_welcome_email(request.user, coffee_shop)
+            except Exception as e:
+                logger.error(f"Failed to send welcome email: {str(e)}")
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=self.get_success_headers(serializer.data)
+            )
 
         except Exception as e:
-            # Log the email sending error but don't prevent account creation
-            logger.error(f"Failed to send welcome email: {str(e)}")
-
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            logger.error(f"Unexpected error in coffee shop creation: {str(e)}")
+            return Response(
+                {"error": "An unexpected error occurred"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def get_queryset(self):
         return CoffeeShop.objects.filter(owner=self.request.user)
@@ -643,6 +689,69 @@ class CoffeeShopViewSet(viewsets.ModelViewSet):
             })
         return Response({"message": "No active QR code found"}, status=status.HTTP_404_NOT_FOUND)
 
+def verify_dti_permit(dti_permit_text):
+    """Enhanced DTI permit verification"""
+    if not dti_permit_text:
+        return False
+
+    required_keywords = [
+        "Department of Trade and Industry",
+        "Certificate of Business Name Registration",
+        "Business Name",
+        "Act 3383",
+        "Act 4147"
+    ]
+
+    dti_permit_text_lower = dti_permit_text.lower()
+    keyword_count = sum(
+        1 for keyword in required_keywords
+        if keyword.lower() in dti_permit_text_lower
+    )
+
+    # Require at least 80% of keywords to be present
+    return keyword_count >= len(required_keywords) * 0.8
+
+def send_welcome_email(user, coffee_shop):
+    try:
+        email = EmailMessage(
+            subject='Your Coffee Shop Account is Ready',
+            body=f'''
+            <html>
+            <body>
+                <h1>Hello {user.username},</h1>
+
+                <p>Your coffee shop account has been successfully created!</p>
+                <p>Log in using your account, which you used to apply for the Coffee Shop</p>
+                <p>To access your coffee shop page, please click the link below:</p>
+
+                <p><a href="https://kohilocale.vercel.app/" style="display: inline-block;
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 10px 20px;
+                    text-decoration: none;
+                    border-radius: 5px;">
+                    Access Your Coffee Shop
+                </a></p>
+
+                <p>Best regards,<br>Kohi Locale Team</p>
+            </body>
+            </html>
+            ''',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[user.email],
+        )
+
+        # Set the email content type to HTML
+        email.content_subtype = "html"
+
+        # Send the email
+        email.send(fail_silently=False)
+
+    except Exception as e:
+        # Log the email sending error but don't prevent account creation
+        logger.error(f"Failed to send welcome email: {str(e)}")
+
+
 @api_view(['GET'])
 def validate_rating_token(request, token):
     rating_token = get_object_or_404(RatingToken, token=token)
@@ -668,6 +777,19 @@ class CoffeeShopOwnerViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+
+        # Handle image deletion if a new image is being uploaded
+        if 'image' in request.FILES:
+            # Delete the old image if it exists
+            if instance.image:
+                try:
+                    # Get the file path
+                    old_image_path = instance.image.path
+                    # Delete the file from storage
+                    default_storage.delete(old_image_path)
+                except Exception as e:
+                    print(f"Error deleting old image: {e}")
+
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 

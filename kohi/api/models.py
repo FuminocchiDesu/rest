@@ -56,6 +56,7 @@ class CoffeeShop(models.Model):
     is_owner = models.BooleanField(default=False)
     is_under_maintenance = models.BooleanField(default=False)
     is_terminated = models.BooleanField(default=False)
+    dti_permit = models.FileField(upload_to='dti_permits/', blank=True, null=True)
 
     def __str__(self):
         return self.name
@@ -176,7 +177,7 @@ class MenuCategory(models.Model):
 class MenuItem(models.Model):
     category = models.ForeignKey(MenuCategory, on_delete=models.CASCADE, related_name='items')
     name = models.CharField(max_length=100)
-    description = models.TextField()
+    description = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='menu_items/', blank=True, null=True)  # Primary image
     is_available = models.BooleanField(default=True)
     price = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
