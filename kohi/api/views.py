@@ -640,7 +640,7 @@ class CoffeeShopViewSet(viewsets.ModelViewSet):
         )
 
         # Generate QR code
-        qr_data = f'https://khlcle.pythonanywhere.com/rate-coffee-shop/{token.token}/'
+        qr_data = f'http://192.168.232.1:8000/rate-coffee-shop/{token.token}/'
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
         qr.add_data(qr_data)
         qr.make(fit=True)
@@ -662,7 +662,7 @@ class CoffeeShopViewSet(viewsets.ModelViewSet):
 
         if latest_token:
             # Generate QR code
-            qr_data = f'https://khlcle.pythonanywhere.com/rate-coffee-shop/{latest_token.token}/'
+            qr_data = f'http://192.168.232.1:8000/rate-coffee-shop/{latest_token.token}/'
             qr = qrcode.QRCode(version=1, box_size=10, border=5)
             qr.add_data(qr_data)
             qr.make(fit=True)
