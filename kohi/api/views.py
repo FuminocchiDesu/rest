@@ -51,8 +51,38 @@ import io
 from django.http import HttpResponse
 from django.core.files.storage import default_storage
 import os
-from django.core.files.uploadedfile import InMemoryUploadedFile
 import PyPDF2
+from better_profanity import profanity
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
+import calendar
+
+def censor_bad_words(text, censor_char='*'):
+    if not text:
+        return text
+    try:
+        # Add custom local/regional profanities
+        custom_bad_words = [
+            'putangina', 'tangina', 'tarantado', 'tarantada', 'gago', 'gaga',
+            'ulol', 'leche', 'lintik', 'buwisit', 'animal', 'punyeta',
+            'hudas', 'yawa', 'bwakanangina', 'bwesit', 'tanga', 'bobo',
+            'inutil', 'amputa', 'kupal', 'ungas', 'tarantado', 'tanginamo',
+            'putragis', 'peste', 'hayop', 'gunggong', 'bwisit', 'kagaguhan',
+            'katangahan', 'tarantismado', 'tarantismada', 'hinayupak', 'lintek',
+            'buang', 'yabag', 'kampret', 'demonyo', 'ulupong', 'walanghiya',
+            'putres', 'hudas ka', 'lapastangan'
+        ]
+
+        # Load default profanities
+        profanity.load_censor_words()
+
+        # Add custom words to the existing profanity list
+        profanity.add_censor_words(custom_bad_words)
+
+        # Censor the text
+        return profanity.censor(text, censor_char)
+    except Exception as e:
+        print(f"Error in censor_bad_words: {e}")
+        return text
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -99,31 +129,24 @@ def update_username(request):
         return Response({'message': 'Username updated successfully.'}, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-def get_date_range(filter_type):
+def get_date_range_and_annotate(start_date=None, end_date=None):
     now = timezone.now()
-    if filter_type == 'day':
-        start_date = now - timedelta(days=1)
-    elif filter_type == 'week':
-        start_date = now - timedelta(weeks=1)
-    elif filter_type == 'month':
-        start_date = now - timedelta(days=30)
-    else:  # year
-        start_date = now - timedelta(days=365)
-    return start_date
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def dashboard_data(request):
-    coffee_shop = request.user.coffee_shops.first()
-    if not coffee_shop:
-        return Response({"error": "No coffee shop found for this user"}, status=400)
+    # If no start date provided, default to current month's first day
+    if start_date is None:
+        start_date = timezone.datetime(now.year, now.month, 1)
 
-    # Get favorite count
-    favorite_count = coffee_shop.favorited_by.count()
+    # If no end date provided, default to current month's last day
+    if end_date is None:
+        _, last_day = calendar.monthrange(now.year, now.month)
+        end_date = timezone.datetime(now.year, now.month, last_day)
 
-    return Response({
-        "favorite_count": favorite_count
-    })
+    return {
+        'start_date': start_date,
+        'end_date': end_date,
+        'annotation': TruncDay('timestamp'),
+        'group_by': ['day']
+    }
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -132,16 +155,31 @@ def visits_data(request):
     if not coffee_shop:
         return Response({"error": "No coffee shop found for this user"}, status=400)
 
-    filter_type = request.GET.get('filter', 'month')
-    start_date = get_date_range(filter_type)
+    # Get start and end dates from query params
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
 
-    visits_data = coffee_shop.visit_set.filter(
-        timestamp__gte=start_date
-    ).extra(
-        select={'date': 'DATE(timestamp)'}
-    ).values('date').annotate(
+    start_date = timezone.datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+    end_date = timezone.datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+
+    # Get date configuration
+    date_config = get_date_range_and_annotate(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    # Base query
+    visits_query = coffee_shop.visit_set.filter(
+        timestamp__gte=date_config['start_date'],
+        timestamp__lte=date_config['end_date']
+    )
+
+    # Annotate and aggregate
+    visits_data = visits_query.annotate(
+        period=TruncDay('timestamp')
+    ).values('period').annotate(
         visits=Count('id')
-    ).order_by('date')
+    ).order_by('period')
 
     return Response({
         "visits_data": list(visits_data)
@@ -154,29 +192,65 @@ def reviews_data(request):
     if not coffee_shop:
         return Response({"error": "No coffee shop found for this user"}, status=400)
 
-    filter_type = request.GET.get('filter', 'month')
-    start_date = get_date_range(filter_type)
+    # Get start and end dates from query params
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
 
-    reviews_data = coffee_shop.ratings.filter(
-        created_at__gte=start_date
-    ).extra(
-        select={'date': 'DATE(created_at)'}
-    ).values('date').annotate(
+    start_date = timezone.datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+    end_date = timezone.datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+
+    # Get date configuration
+    date_config = get_date_range_and_annotate(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    # Base query
+    reviews_query = coffee_shop.ratings.filter(
+        created_at__gte=date_config['start_date'],
+        created_at__lte=date_config['end_date']
+    )
+
+    # Annotate and aggregate
+    reviews_data = reviews_query.annotate(
+        period=TruncDay('created_at')
+    ).values('period').annotate(
         average_rating=Avg('stars'),
         review_count=Count('id')
-    ).order_by('date')
+    ).order_by('period')
 
+    # Recent reviews (independent of filter)
     recent_reviews = coffee_shop.ratings.order_by('-created_at')[:3]
 
     return Response({
         "reviews_data": list(reviews_data),
         "recent_reviews": [
             {
-                "content": review.description,
+                "content": censor_bad_words(review.description),  # Censor description here
                 "author": review.user.username,
                 "rating": review.stars
             } for review in recent_reviews
         ]
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_data(request):
+    coffee_shop = request.user.coffee_shops.first()
+    if not coffee_shop:
+        return Response({"error": "No coffee shop found for this user"}, status=400)
+
+    # Get favorite count and users who favorited
+    favorite_users = coffee_shop.favorited_by.all().select_related('user')
+    favorite_users_data = [{
+        'username': profile.user.username,
+        'full_name': profile.full_name,
+        'profile_picture': profile.get_profile_picture_url()
+    } for profile in favorite_users]
+
+    return Response({
+        "favorite_count": len(favorite_users_data),
+        "favorite_users": favorite_users_data
     })
 
 @api_view(['POST'])
@@ -225,21 +299,37 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 @api_view(['POST'])
 def custom_login(request):
-    username = request.data.get('username')
+    # Accept either username or email
+    login_identifier = request.data.get('login_identifier')
     password = request.data.get('password')
-    if not username or not password:
-        return Response({'error': 'Username and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = authenticate(username=username, password=password)
+    if not login_identifier or not password:
+        return Response({'error': 'Login identifier and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Try to authenticate with username or email
+    user = None
+    if '@' in login_identifier:
+        # If the identifier contains '@', try to authenticate with email
+        try:
+            user_obj = User.objects.get(email=login_identifier)
+            user = authenticate(username=user_obj.username, password=password)
+        except User.DoesNotExist:
+            user = None
+    else:
+        # Otherwise, try to authenticate with username
+        user = authenticate(username=login_identifier, password=password)
+
     if user is not None:
         if not user.is_active or not user.profile.email_verified:
             return Response({'error': 'Please verify your email before logging in.'}, status=status.HTTP_400_BAD_REQUEST)
+
         refresh = RefreshToken.for_user(user)
         return Response({
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'user': {'username': user.username, 'email': user.email}
         })
+
     return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -282,12 +372,37 @@ class OwnerTokenObtainPairView(TokenObtainPairView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        user = User.objects.get(username=request.data['username'])
+        # Try to find user by username or email
+        login_input = request.data.get('username', '')
+        password = request.data.get('password', '')
 
+        # First try to find by username
+        user = User.objects.filter(username=login_input).first()
+
+        # If not found, try by email
+        if not user:
+            user = User.objects.filter(email=login_input).first()
+
+        # If no user found, return error
+        if not user:
+            return Response({"detail": "Invalid credentials"}, status=401)
+
+        # Validate password
+        if not user.check_password(password):
+            return Response({"detail": "Invalid credentials"}, status=401)
+
+        # Check if user is staff
         if not user.is_staff:
             return Response({"detail": "Not authorized"}, status=403)
 
+        # Proceed with token generation
+        serializer = self.get_serializer(data={'username': user.username, 'password': password})
+        serializer.is_valid(raise_exception=True)
+
+        # Get response with tokens
+        response = Response(serializer.validated_data)
+
+        # Add coffee shop ID if exists
         coffee_shop = CoffeeShop.objects.filter(owner=user).first()
         if coffee_shop:
             response.data['coffee_shop_id'] = coffee_shop.id
@@ -1098,62 +1213,68 @@ class RatingViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         shop_id = self.kwargs.get('coffee_shop_id')
-        if shop_id is not None:
-            return Rating.objects.filter(coffee_shop_id=shop_id)
-        return Rating.objects.all()
+        queryset = Rating.objects.all() if shop_id is None else Rating.objects.filter(coffee_shop_id=shop_id)
 
-    def user_rating(self, request, coffee_shop_id=None):
-        try:
-            rating = Rating.objects.get(coffee_shop_id=coffee_shop_id, user=request.user)
-            serializer = self.get_serializer(rating)
-            return Response(serializer.data)
-        except Rating.DoesNotExist:
-            return Response(
-                {"id": 0, "stars": 0, "description": "", "created_at": ""},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # Censor descriptions in the queryset
+        for rating in queryset:
+            rating.description = censor_bad_words(rating.description)
 
-    def update_user_rating(self, request, coffee_shop_id=None):
-        try:
-            rating = Rating.objects.get(coffee_shop_id=coffee_shop_id, user=request.user)
-            serializer = self.get_serializer(rating, data=request.data, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
-        except Rating.DoesNotExist:
-            return Response(
-                {"detail": "Rating not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        return queryset
 
     def create(self, request, *args, **kwargs):
-        # Check if user already has a rating for this coffee shop
-        coffee_shop_id = kwargs.get('coffee_shop_id')
-        existing_rating = Rating.objects.filter(
-            coffee_shop_id=coffee_shop_id,
-            user=request.user
-        ).first()
-
-        if existing_rating:
-            # Update existing rating instead of creating new one
-            serializer = self.get_serializer(existing_rating, data=request.data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
-        # Proceed with original creation logic for new ratings
         token_value = request.data.get('token')
         token = get_object_or_404(RatingToken, token=token_value)
+
+        # Check recent ratings and token validity first
+        recent_ratings = Rating.objects.filter(
+            user=request.user,
+            coffee_shop=token.coffee_shop,
+            created_at__gte=timezone.now() - timedelta(hours=24)
+        )
+        if recent_ratings.exists():
+            return Response(
+                {"detail": "You can only rate once per 24 hours."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         if not token.is_valid():
             return Response(
                 {"detail": "Token has expired or is invalid."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        serializer = self.get_serializer(data=request.data)
+        # Prepare data for serializer
+        data = request.data.copy()
+        description = data.get('description', '')
+        data['description'] = censor_bad_words(description)
+
+        # Use the modified data in the serializer
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user, coffee_shop=token.coffee_shop)
+        self.perform_create(serializer)
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user, coffee_shop=get_object_or_404(RatingToken, token=self.request.data.get('token')).coffee_shop)
+
+    def update(self, request, *args, **kwargs):
+        # Prepare data for update
+        data = request.data.copy()
+        description = data.get('description', '')
+        data['description'] = censor_bad_words(description)
+
+        # Perform partial or full update
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 class BugReportViewSet(viewsets.ModelViewSet):
     queryset = BugReport.objects.all()
@@ -1339,29 +1460,48 @@ class CoffeeShopDetailView(generics.RetrieveAPIView):
     serializer_class = CoffeeShopSerializer
 
     def get(self, request, *args, **kwargs):
-        coffee_shop = self.get_object()
-        serializer = self.get_serializer(coffee_shop)
-
-        # Fetch related data
-        menu_categories = MenuCategory.objects.filter(coffee_shop=coffee_shop).prefetch_related('items')
-        promos = Promo.objects.filter(coffee_shop=coffee_shop)
-        ratings = Rating.objects.filter(coffee_shop=coffee_shop)
-        opening_hours = OpeningHour.objects.filter(coffee_shop=coffee_shop)
-
-        # Fetch contact information
         try:
-            contact_info = coffee_shop.contact_info
-            contact_data = {
-                'contact_name': contact_info.contact_name,
-                'primary_phone': contact_info.primary_phone,
-                'secondary_phone': contact_info.secondary_phone,
-                'email': contact_info.email,
-                'website': contact_info.website,
-                'facebook': contact_info.facebook,
-                'instagram': contact_info.instagram,
-                'twitter': contact_info.twitter,
-            }
-        except ContactInformation.DoesNotExist:
+            coffee_shop = self.get_object()
+
+            # Validate coffee shop exists
+            if not coffee_shop:
+                return Response(
+                    {"error": "Coffee shop not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            serializer = self.get_serializer(coffee_shop)
+
+            # Fetch related data with error handling
+            try:
+                menu_categories = MenuCategory.objects.filter(coffee_shop=coffee_shop).prefetch_related('items')
+                promos = Promo.objects.filter(coffee_shop=coffee_shop)
+                ratings = Rating.objects.filter(coffee_shop=coffee_shop)
+                opening_hours = OpeningHour.objects.filter(coffee_shop=coffee_shop)
+            except Exception as related_data_error:
+                print(f"Error fetching related data: {related_data_error}")
+                return Response(
+                    {"error": "Error fetching related coffee shop data"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            # Safe rating censoring
+            censored_ratings = []
+            for rating in ratings:
+                try:
+                    # Use get() with a default empty string to handle None
+                    original_description = rating.description or ''
+                    censored_description = censor_bad_words(original_description)
+
+                    rating_data = RatingSerializer(rating).data
+                    rating_data['description'] = censored_description
+                    censored_ratings.append(rating_data)
+                except Exception as rating_error:
+                    print(f"Error processing rating: {rating_error}")
+                    # Use original rating data without modification if censoring fails
+                    censored_ratings.append(RatingSerializer(rating).data)
+
+            # Safe contact information retrieval
             contact_data = {
                 'contact_name': None,
                 'primary_phone': None,
@@ -1373,18 +1513,43 @@ class CoffeeShopDetailView(generics.RetrieveAPIView):
                 'twitter': None,
             }
 
-        # Add latitude, longitude, is_under_maintenance, and contact information to the response
-        return Response({
-            'coffee_shop': {
-                **serializer.data,
-                'latitude': coffee_shop.latitude,
-                'longitude': coffee_shop.longitude,
-                'is_under_maintenance': coffee_shop.is_under_maintenance,
-                'contact_information': contact_data,
-            },
-            'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': request}).data,
-            'promos': PromoSerializer(promos, many=True, context={'request': request}).data,
-            'ratings': RatingSerializer(ratings, many=True).data,
-            'opening_hours': OpeningHourSerializer(opening_hours, many=True, context={'request': request}).data,
-        })
+            try:
+                contact_info = coffee_shop.contact_info
+                contact_data.update({
+                    'contact_name': contact_info.contact_name,
+                    'primary_phone': contact_info.primary_phone,
+                    'secondary_phone': contact_info.secondary_phone,
+                    'email': contact_info.email,
+                    'website': contact_info.website,
+                    'facebook': contact_info.facebook,
+                    'instagram': contact_info.instagram,
+                    'twitter': contact_info.twitter,
+                })
+            except ContactInformation.DoesNotExist:
+                # Use default empty contact_data
+                pass
+            except Exception as contact_error:
+                print(f"Error retrieving contact information: {contact_error}")
+
+            # Comprehensive response
+            return Response({
+                'coffee_shop': {
+                    **serializer.data,
+                    'latitude': coffee_shop.latitude,
+                    'longitude': coffee_shop.longitude,
+                    'is_under_maintenance': coffee_shop.is_under_maintenance,
+                    'contact_information': contact_data,
+                },
+                'menu_categories': MenuCategorySerializer(menu_categories, many=True, context={'request': request}).data,
+                'promos': PromoSerializer(promos, many=True, context={'request': request}).data,
+                'ratings': censored_ratings,
+                'opening_hours': OpeningHourSerializer(opening_hours, many=True, context={'request': request}).data,
+            })
+
+        except Exception as e:
+            print(f"Unexpected error in CoffeeShopDetailView: {e}")
+            return Response(
+                {"error": "An unexpected error occurred while fetching coffee shop details"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 

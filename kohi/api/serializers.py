@@ -468,10 +468,16 @@ class MenuCategorySerializer(serializers.ModelSerializer):
 
 class PromoSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False)
+    days = serializers.JSONField(required=False, allow_null=True)
 
     class Meta:
         model = Promo
-        fields = ['id', 'name', 'description', 'start_date', 'end_date', 'image']
+        fields = [
+            'id', 'name', 'description',
+            'start_date', 'end_date',
+            'image', 'days',
+            'start_time', 'end_time'
+        ]
 
 class RatingSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -479,8 +485,13 @@ class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = '__all__'
+        extra_kwargs = {
+            'user': {'read_only': True},
+            'coffee_shop': {'read_only': True}
+        }
+
     def create(self, validated_data):
-       return Rating.objects.create(**validated_data)
+        return Rating.objects.create(**validated_data)
 
 class RatingTokenSerializer(serializers.ModelSerializer):
     class Meta:

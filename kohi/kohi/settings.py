@@ -24,6 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-ohf6b5v9l$fv@(*bs^#48p=ctfi8&7#o4*0o=-v%xxjp**+s*3'
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
@@ -186,5 +187,9 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+EMAIL_BACKEND = "anymail.backends.sendinblue.EmailBackend"
 
+
+DEFAULT_FROM_EMAIL = "kohilocale@gmail.com"  # Your verified custom domain email
+FRONTEND_URL = "https://khlcle.pythonanywhere.com"  # Update this with your Expo app URL when you have a production build
 

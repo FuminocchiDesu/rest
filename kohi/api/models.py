@@ -118,9 +118,10 @@ class UserProfile(models.Model):
         return self.user.username
 
     def get_profile_picture_url(self):
+        base_url = "https://khlcle.pythonanywhere.com"
         if self.profile_picture:
-            return f"{settings.MEDIA_URL}{self.profile_picture}"
-        return f"{settings.MEDIA_URL}profile_pictures/default.png"
+            return f"{base_url}{settings.MEDIA_URL}{self.profile_picture}"
+        return f"{base_url}{settings.MEDIA_URL}profile_pictures/default.png"
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
@@ -203,12 +204,27 @@ class MenuItemSize(models.Model):
 
 
 class Promo(models.Model):
+    DAYS_OF_WEEK = [
+        ('MON', 'Monday'),
+        ('TUE', 'Tuesday'),
+        ('WED', 'Wednesday'),
+        ('THU', 'Thursday'),
+        ('FRI', 'Friday'),
+        ('SAT', 'Saturday'),
+        ('SUN', 'Sunday'),
+    ]
+
     coffee_shop = models.ForeignKey(CoffeeShop, on_delete=models.CASCADE, related_name='promos')
     name = models.CharField(max_length=100)
     description = models.TextField()
     start_date = models.DateField()
     end_date = models.DateField()
     image = models.ImageField(upload_to='promos/', blank=True, null=True)
+
+    # New optional fields
+    days = models.JSONField(blank=True, null=True)  # Store selected days as JSON
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.coffee_shop.name} - {self.name}"
@@ -219,9 +235,6 @@ class Rating(models.Model):
     stars = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
     description = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user', 'coffee_shop')
 
     def __str__(self):
         return f"{self.user.username}'s {self.stars}-star rating for {self.coffee_shop.name}"
